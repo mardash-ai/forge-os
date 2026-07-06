@@ -20,6 +20,14 @@ new backwards-compatible features, **PATCH** for backwards-compatible fixes.
 
 ### Changed
 
+- **Bumped the Forge control plane to `forge-control-plane:0.3.0@sha256:8d0dea66…` (was `0.2.0`),
+  adopting the platform fix for P1.** `forge provision` is now idempotent/convergent: it persists the
+  app's desired infra (Postgres/Redis/secrets + host-port remaps) in `forge.app.json` and converges
+  from it, so a flag-less re-provision keeps every existing service and the `5433:5432` Postgres
+  remap, and it refuses to drop a data-volume service without `--force`. Verified the original
+  footgun (a `--secret`-only provision silently dropping Postgres) is gone. Updated the
+  `provision-app` skill (here and in forge-starter) to describe the convergent behavior, scoping the
+  old "re-pass every flag" warning to control planes older than `0.3.0`.
 - **Adopted Forge-managed secrets (capability C5).** `ANTHROPIC_API_KEY` is now stored in Forge's
   encrypted vault and injected into the app container at `forge dev`, replacing the hand-wired
   `app/.env` + compose plumbing. Pinned the control plane to

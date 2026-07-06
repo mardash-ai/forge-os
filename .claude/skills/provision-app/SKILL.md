@@ -61,13 +61,21 @@ APP=my-app   # ask the human for a name if not given; else derive a kebab-case o
 
 Apply the **step gate** after each command.
 
-> **⚠️ `provision` is declarative-from-flags, not additive.** It **regenerates** `app/compose.yaml`
-> from *only* the flags on that invocation, silently **dropping** any service you don't re-specify.
-> So **every re-provision must re-pass the app's full infra set** (e.g. `--with-postgres`, each
-> `--secret <NAME>`) — a flag-less re-provision loses Postgres/Redis/secrets. It also resets any
-> hand-applied host-port remap (e.g. `5433:5432`), which must be re-applied afterward. When unsure
-> what the app already has, run `./forge inspect docker --app "$APP"` **before** re-provisioning,
-> then provision with all of it.
+> **`provision` converges from persisted infra (control-plane ≥ 0.3.0).** It reads the app's desired
+> environment — Postgres/Redis, declared `--secret`s, and host-port remaps — from `app/forge.app.json`
+> and **converges** to it: flags are **additive**, a flag-less re-provision keeps every existing
+> service and port remap, and it **refuses** (422) to drop a data-volume service (e.g. Postgres)
+> without `--force`. Remove a service on purpose with `--without-postgres` / `--without-redis`; set a
+> host port with `--postgres-port` / `--redis-port` / `--web-port`. `./forge inspect app --app "$APP"`
+> shows the persisted `infra`. (An app provisioned on an older plane recovers its infra from the
+> current `compose.yaml` on the first re-provision.)
+>
+> **⚠️ On older control planes (< 0.3.0), `provision` is destructive.** It **regenerates**
+> `app/compose.yaml` from *only* the flags on that invocation, silently **dropping** any service you
+> don't re-specify and resetting hand-applied host-port remaps. If `FORGE_IMAGE` pins a control plane
+> below `0.3.0`, re-pass the app's **full** infra set every time (e.g. `--with-postgres`, each
+> `--secret <NAME>`), re-apply the remap afterward, and run `./forge inspect docker --app "$APP"`
+> **before** re-provisioning to see what you'd lose.
 
 ## 2. Step gate (after EVERY command)
 
@@ -140,12 +148,12 @@ unrequested work.
 | `likely_cause` / symptom | Fix |
 |---|---|
 | `Cannot find module 'next'` / `Dependencies are not installed` | Run `./forge install --app "$APP"`, then rebuild. |
-| `prerender error … NODE_ENV=development` | Re-provision to regenerate compose, then rebuild — but **re-pass every infra flag the app already uses** (e.g. `./forge provision --app "$APP" --with-postgres --secret <NAME>`). A flag-less re-provision **drops** those services (see the ⚠️ under §1). |
+| `prerender error … NODE_ENV=development` | Re-provision to regenerate compose, then rebuild. On control-plane **≥ 0.3.0** a flag-less `./forge provision --app "$APP"` is safe (it converges from persisted `infra`); on **< 0.3.0** re-pass every infra flag (`--with-postgres`, each `--secret <NAME>`) or you'll drop those services (see the callout under §1). |
 | `TypeScript type error` | Edit the file in `file_refs` (under `./app/`), fix the type, rebuild. |
 | `Lint reported problems` | Edit the file in `file_refs`, then `./forge lint --app "$APP"`. |
 | `Unsupported platform/framework` | Only `web`/`nextjs` exists. Stop and report. |
 | Adding an npm dependency | Edit `app/package.json`, then `./forge install` — never `npm` on the host. |
 | A DB-backed page fails to build (tries to connect while prerendering) | Mark the page `export const dynamic = 'force-dynamic'`. |
-| `./forge dev` fails: port `5432` already allocated | Another project holds Postgres's host port. The app uses `postgres:5432` internally — remap only the **host** port in `app/compose.yaml` (e.g. `5433:5432`); don't touch the other project. (Re-provision resets this — re-apply it.) |
-| Re-provision dropped Postgres/Redis/secrets, or reset a host-port remap | `provision` regenerates compose from the flags you pass, not additively. Re-pass **all** infra flags (`--with-postgres`, each `--secret <NAME>`) and re-apply any host-port remap. `./forge inspect docker --app "$APP"` shows what's currently provisioned. |
+| `./forge dev` fails: port `5432` already allocated | Another project holds Postgres's host port. The app uses `postgres:5432` internally — remap only the **host** port in `app/compose.yaml` (e.g. `5433:5432`); don't touch the other project. On control-plane **≥ 0.3.0** the remap persists in `forge.app.json` and survives re-provision (or set it with `--postgres-port 5433`); on **< 0.3.0** re-apply it after every provision. |
+| Re-provision dropped Postgres/Redis/secrets, or reset a host-port remap | Only on control-plane **< 0.3.0** (destructive provision): re-pass **all** infra flags (`--with-postgres`, each `--secret <NAME>`) and re-apply any host-port remap. On **≥ 0.3.0** provision converges from `forge.app.json` and won't drop services — remove one deliberately with `--without-postgres`/`--force`. `./forge inspect docker --app "$APP"` shows what's currently provisioned. |
 | Host editor shows "cannot find module" for `next`/`react`/`@/…` | False positive — `node_modules` is in the Docker volume, not on the host. Trust `./forge build`/`lint`. |

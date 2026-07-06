@@ -34,10 +34,6 @@ services:
       - POSTGRES_USER=forge
       - POSTGRES_PASSWORD=forge
       - POSTGRES_DB=forge_os
-    # Host port remapped to 5433 to avoid a conflict with another project on 5432.
-    # The web service still reaches Postgres internally at postgres:5432 (unchanged).
-    # NOTE: `forge provision` regenerates this file and resets this to 5432 — re-apply
-    # the remap after any re-provision.
     ports:
       - "5433:5432"
     volumes:

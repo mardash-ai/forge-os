@@ -14,7 +14,7 @@ routed to Forge**, instead of being quietly absorbed as app-local code.
 > **forge-os agent** (builds features here and simplifies `./app` onto new capabilities). They
 > never talk directly — a **human relays** between them. Read *How this file works* before editing.
 
-> **✍️ Write baton — `Holder: forge-os`.** Only the named Holder may edit this file; the other
+> **✍️ Write baton — `Holder: platform-builder`.** Only the named Holder may edit this file; the other
 > agent waits for the human to pass the baton. This is the single-writer lock over the human relay
 > (the two agents live in separate repos, so this token — not git — is what serializes writes).
 > Rules:
@@ -222,7 +222,7 @@ we see the blast radius before bumping.
 | C2 | _TODO_ | _TODO_ | _TODO_ | _TODO_ |
 | C3 | _TODO_ | _TODO_ | _TODO_ | _TODO_ |
 | C4 | _TODO_ | _TODO_ | _TODO_ | _TODO_ |
-| C5 | `0.2.0 @ sha256:924814d3…eb762` **multi-arch** (v0.2.0 / `5765c4a`) | image bump + re-provision (declare `--secret`) | `d2faf4d` | `0.2.0 @ sha256:924814d3…eb762` |
+| C5 | `0.2.0 @ sha256:924814d3…eb762` **multi-arch** (v0.2.0 / `5765c4a`) | image bump + re-provision (declare `--secret`) | `d2faf4d` | `0.3.0 @ sha256:8d0dea66…df05` (bumped via **P1**; ≥ 0.2.0, secrets unaffected) |
 | C6 | _TODO_ | _TODO_ | _TODO_ | _TODO_ |
 
 ---
@@ -453,9 +453,10 @@ spec for the platform-builder; *Refactors OUT* is the forge-os plan; the *Platfo
     secret convention and the hand-wired compose plumbing.
   - **Notes** — the delivery ships `secrets set`/`list` but **no `secrets unset`** (fine — not in the
     Required semantics; would enable a live "revoke → 503" demo later) — now tracked as **P2** under
-    *Platform issues & requests*. Also: `forge provision` regenerates `app/compose.yaml`, drops
-    services you don't re-specify, and resets the Postgres host-port remap to `5432` — tracked as
-    **P1**; re-apply `5433:5432` and re-pass all infra flags after any re-provision.
+    *Platform issues & requests*. The provision-drops-services / resets-host-port footgun hit here was
+    filed as **P1 and is now ✅ fixed in 0.3.0** — `provision` converges from the persisted `infra`
+    block, so a flag-less re-provision keeps Postgres + the `5433` remap and no manual re-apply is
+    needed (the app has since been bumped `0.2.0 → 0.3.0`).
   - **Adopted in** — see the *Runtime & version* table (C5) and the Handoff log.
 
 ### C6 · Standard health / telemetry contract — *(minor)*
@@ -504,7 +505,7 @@ Build these when a feature *needs* them, not because the roadmap lists them:
 **Not** new capabilities — defects / UX gaps in **existing** Forge behavior that forge-os hit while
 adopting. The platform-builder owns the fix; track these alongside capability work.
 
-### P1 · `provision` is destructive (replace-from-flags, not additive) — 🟢 fixed in 0.3.0 · Owner: forge-os (bump + verify)
+### P1 · `provision` is destructive (replace-from-flags, not additive) — ✅ fixed & verified in 0.3.0 · Owner: —
 - **Hit during:** C5 adoption. `forge provision --app forge-os --secret ANTHROPIC_API_KEY` (without
   `--with-postgres`) **silently dropped the Postgres service** from `app/compose.yaml`; only a second
   provision with `--with-postgres --secret …` restored it. It also **resets** hand-applied host-port
@@ -536,6 +537,18 @@ adopting. The platform-builder owns the fix; track these alongside capability wo
   - **Verify:** `forge provision --app <app> --secret <X>` (no `--with-postgres`) keeps Postgres (the
     original footgun); `forge inspect app --app <app>` shows the persisted `infra`; `forge provision
     --app <app> --without-postgres` is refused **422** without `--force`.
+  - **Verified (forge-os):** bumped the control plane `0.2.0 → 0.3.0 @ sha256:8d0dea66…df05`
+    (multi-arch index confirmed to carry `linux/arm64` before pinning). A **flag-less** `forge
+    provision --app forge-os` recovered the app's full environment into `forge.app.json`'s `infra`
+    block — `{postgres:true, redis:false, secrets:[ANTHROPIC_API_KEY], ports:{web:3000,
+    postgres:5433}}` — **nothing dropped**, and the hand-applied `5433` remap survived (it no longer
+    needs manual re-application; Forge even regenerated `app/compose.yaml` without the old "re-apply
+    after provision" comment). The three checks all held: (1) the original footgun — `provision
+    --secret ANTHROPIC_API_KEY` with **no** `--with-postgres` — kept `services:[web,postgres]` at
+    port `5433`; (2) `inspect app` surfaces the persisted `infra`; (3) `provision --without-postgres`
+    was **refused** (`invalid_input`, the 422 code) with a data-loss message, requiring `--force`.
+    The app now runs on `0.3.0`; the `provision-app` skill guidance (forge-os + forge-starter) was
+    updated to describe the convergent behavior.
 
 ### P2 · Add `secrets unset` (C5 follow-up) — 🟡 minor
 - **Context:** C5 shipped `secrets set` / `list` but no way to **remove/revoke** a secret. Not in the
@@ -565,6 +578,7 @@ Append one line per state change (newest last). `by` = role; `ref` = commit / PR
 | C5 | → ✅ adopted | forge-os | `d2faf4d` | Secrets adopted: key in Forge's encrypted vault, injected at `forge dev`; `app/.env` + hand-wired compose plumbing deleted; control plane pinned to `0.2.0@924814d3…`. Verified 200 draft with `app/.env` gone. Baton → platform-builder (next per sequence: **C2**). |
 | — | platform feedback | forge-os | `546c9d5` | filed **P1** (`provision` destructive/replace-from-flags) + **P2** (add `secrets unset`); fixed the flag-less-reprovision trap in the provision-app skill (forge-os + starter). Under a one-turn baton grant; baton stays with platform-builder for C2 + P1/P2. |
 | P1 | → 🟢 fixed | platform-builder | `0.3.0@sha256:8d0dea66…df05` | `provision` now converges (non-destructive): persisted `infra`, additive flags, `--force` volume guard, host-port + pre-fix-`compose` recovery. Prioritized ahead of C2 — data-safety footgun that recurs on every adoption. Baton → forge-os (bump + verify; then pass back for C2). |
+| P1 | → ✅ verified | forge-os | `0.3.0@sha256:8d0dea66…df05` | bumped control plane `0.2.0 → 0.3.0` (arm64 in the index confirmed first). Flag-less re-provision persisted `infra` to `forge.app.json` (postgres + `ANTHROPIC_API_KEY` + `5433` remap recovered, nothing dropped). Footgun gone: `--secret`-only provision keeps Postgres; `--without-postgres` refused **422** without `--force`. Updated the provision-app skill (forge-os + starter) to the convergent behavior. Baton → platform-builder (next per sequence: **C2 Scheduler**). |
 
 ---
 
