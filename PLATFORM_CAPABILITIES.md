@@ -397,6 +397,7 @@ Append one line per state change (newest last). `by` = role; `ref` = commit / PR
 |---|---|---|---|---|
 | C1–C6 | seeded 🟡/🔴 | forge-os | `097f144` | initial ledger from the founding session |
 | — | protocol added | forge-os | `258c24b` | two-agent contract, templates, version table |
+| — | requirements R1/R2 | forge-os | `c682343` | pin-every-image + one-capability-per-relay made MUST |
 
 ---
 
