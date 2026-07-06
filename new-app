@@ -159,6 +159,6 @@ fi
 echo ""
 echo "${grn}${bold}✓ $APP is ready.${rst}"
 echo "  ${dim}build=$BUILD_ID  test=$TEST_ID  lint=$LINT_ID${rst}"
-echo "  source: apps/$APP/"
+echo "  source: app/"
 [ "$START_DEV" = "1" ] || echo "  run it: ./forge dev --app $APP   ${dim}(http://localhost:3000)${rst}"
 echo ""

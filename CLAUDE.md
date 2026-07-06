@@ -1,33 +1,52 @@
 # CLAUDE.md
 
-This is a **Forge Builder workspace** — a project where you create and iterate on apps through the **Forge** platform, not by writing files and running build tools directly.
+This is a **Forge Builder workspace** — a project where you create and iterate on **one app**
+through the **Forge** platform, not by writing files and running build tools directly.
+
+**Every repo is a single app, and it lives at `./app`.** (The control plane runs in
+single-app mode, `FORGE_APP_LAYOUT=single`.)
 
 ## The one rule
 
-**Do all app lifecycle work through `./forge` (or `./new-app`). Never run `docker`, `npm`, `next`, or `node` directly, and never `cat`/read an app's source to check its state.**
+**Do all app lifecycle work through `./forge` (or `./new-app`). Never run `docker`, `npm`,
+`next`, or `node` directly, and never `cat`/read the app's source to check its state.**
 
-Forge runs everything in Docker, records each action as a Resource, and returns compact JSON. Going around it loses reproducibility and wastes tokens.
+Forge runs everything in Docker, records each action as a Resource, and returns compact JSON.
+Going around it loses reproducibility and wastes tokens.
 
 ## Fastest path: one command
 
-To scaffold and fully validate a new app end-to-end:
+To scaffold and fully validate the app end-to-end:
 
 ```bash
 ./new-app <kebab-name> [--with-postgres] [--with-redis] [--dev]
 ```
 
-`new-app` runs the whole runbook (init → provision → install → build → test → lint), applies the step gate after each step, auto-diagnoses failures with `forge explain`, and prints a done summary. Use this when the human just wants an app created.
+`new-app` runs the whole runbook (init → provision → install → build → test → lint), applies
+the step gate after each step, auto-diagnoses failures with `forge explain`, and prints a
+done summary. The app scaffolds into `./app`.
 
-## Adding a feature to an existing app
+## Adding or evolving a feature
 
-Read **`ADD_A_FEATURE.md`** — it's the spec-driven workflow. The human gives you a short feature spec (Goal + acceptance criteria); you implement it under `apps/<name>/` following Forge conventions (logic in `lib/`, pages in `app/`, tests in `tests/`), then validate with `./forge lint/build/test` and self-heal via `./forge explain` until green. If the human hasn't written a spec, infer one from their request using that file's template, and only ask about choices that are hard to reverse (e.g. does the data need to persist across restarts?).
+Use the **`add-a-feature` skill** (`.claude/skills/add-a-feature/SKILL.md`) — it's the source
+of truth for the spec-driven, design-first workflow:
 
-## Iterating afterward (or for a feature Goal)
+1. The human gives a short feature spec (Goal + acceptance criteria) → you save it at
+   `specs/<feature-slug>/FEATURE.md`. If they didn't write one, infer it, and only ask about
+   choices that are hard to reverse (e.g. *must this data persist across restarts?*).
+2. **Design first for any UI** — produce `specs/<feature-slug>/DESIGN.md` via the
+   **`frontend-design` skill** (and often an interactive mockup) before writing components.
+3. Implement under `./app` (logic in `app/lib/`, pages in `app/app/`, tests in `app/tests/`).
+4. Validate with `./forge lint/build/test` and self-heal via `./forge explain` until green.
+5. Verify the behavior end-to-end (drive the running app; check persistence; screenshot UI).
 
-Use the granular capabilities and the **`provision-app` skill** (`.claude/skills/provision-app/SKILL.md`), which is the authoritative runbook:
+## Iterating with the granular capabilities
+
+The **`provision-app` skill** (`.claude/skills/provision-app/SKILL.md`) is the authoritative
+runbook for the Forge mechanics:
 
 ```bash
-./forge init app --name <name>            # scaffold
+./forge init app --name <name>            # scaffold into ./app (one app per repo)
 ./forge provision|install|build|test|lint --app <name>
 ./forge inspect app|routes|scripts|docker|events --app <name>
 ./forge explain --resource <id>           # diagnose a failure (don't read logs)
@@ -35,13 +54,17 @@ Use the granular capabilities and the **`provision-app` skill** (`.claude/skills
 ```
 
 - Branch on the JSON `.status` field, not the exit code (`build`/`test`/`lint` exit 0 even on failure).
-- On `"failed"`, run `./forge explain --resource <id>` and fix only the files it names.
+- On `"failed"`, run `./forge explain --resource <id>` and fix only the files it names (under `./app/`).
 - `--summary` for human-facing output; `--raw` only if explicitly asked.
 
 ## Layout
 
-- `apps/<name>/` — the apps you create (this is the product; commit it).
+- `app/` — **the app** (this is the product; commit it). Next.js App Router lives at `app/app/`,
+  logic at `app/lib/`, tests at `app/tests/`.
+- `specs/` — feature specs. `specs/ADD_A_FEATURE.md` (how-to) + `specs/<feature-slug>/{FEATURE,DESIGN}.md`.
 - `.forge/` — Forge's Resource/Event/log store (local, gitignored).
+- `.claude/skills/` — `add-a-feature`, `provision-app`, `frontend-design`.
 - `./forge`, `./new-app`, `compose.yaml`, `Makefile` — the launcher. Leave these alone.
 
-Forge is consumed as a black-box platform (CLI/API only). There is no Forge source here to edit.
+Forge is consumed as a black-box platform (CLI/API only). There is no Forge source in this
+repo to edit.

@@ -19,10 +19,12 @@ services:
       - "${FORGE_PORT:-3717}:${FORGE_PORT:-3717}"
     environment:
       - PORT=${FORGE_PORT:-3717}
-      # This project directory IS the Forge workspace. Apps scaffold into
-      # ./apps/<name>; Resource/Event state lives in ./.forge.
+      # This project directory IS the Forge workspace. Every repo is a SINGLE
+      # app: it lives at ./app (FORGE_APP_LAYOUT=single); Resource/Event state
+      # lives in ./.forge.
       - FORGE_WORKSPACE=${PWD}
       - FORGE_STATE_DIR=${PWD}/.forge
+      - FORGE_APP_LAYOUT=single
     volumes:
       # Talk to the host Docker daemon.
       - /var/run/docker.sock:/var/run/docker.sock
