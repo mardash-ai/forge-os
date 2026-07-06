@@ -14,7 +14,7 @@ routed to Forge**, instead of being quietly absorbed as app-local code.
 > **forge-os agent** (builds features here and simplifies `./app` onto new capabilities). They
 > never talk directly — a **human relays** between them. Read *How this file works* before editing.
 
-> **✍️ Write baton — `Holder: free`.** Only the named Holder may edit this file; the other
+> **✍️ Write baton — `Holder: forge-os`.** Only the named Holder may edit this file; the other
 > agent waits for the human to pass the baton. This is the single-writer lock over the human relay
 > (the two agents live in separate repos, so this token — not git — is what serializes writes).
 > Rules:
@@ -261,7 +261,7 @@ the current live floor). Bumping past a row's pin is safe because every delivery
 |---|---|---|---|---|
 | C1 | _TODO (platform-builder)_ | _TODO_ | _TODO (forge-os)_ | _TODO_ |
 | C2 | `0.4.0 @ sha256:9d216618…1a47` **multi-arch** (v0.4.0 / `42e5360`) | image bump + register jobs + add cron endpoint(s) | `95ba999` | `0.4.0 @ sha256:9d216618…1a47` |
-| C3 | _TODO_ | _TODO_ | _TODO_ | _TODO_ |
+| C3 | `0.7.0 @ sha256:b4933e46…` (CP) **+** data-plane `@ sha256:107ecff5…` **multi-arch** (v0.7.0 / `cd7f509`) | both image bumps + `FORGE_EVENTS_URL` on `web` + a `lib/forge-events.ts` client | _TODO (forge-os)_ | _TODO_ |
 | C4 | _TODO_ | _TODO_ | _TODO_ | _TODO_ |
 | C5 | `0.2.0 @ sha256:924814d3…eb762` **multi-arch** (v0.2.0 / `5765c4a`) | image bump + re-provision (declare `--secret`) | `d2faf4d` | `0.3.0 @ sha256:8d0dea66…df05` (bumped via **P1**; ≥ 0.2.0, secrets unaffected) |
 | C6 | _TODO_ | _TODO_ | _TODO_ | _TODO_ |
@@ -450,7 +450,7 @@ spec for the platform-builder; *Refactors OUT* is the forge-os plan; the *Platfo
   - **Adopted in** — see the *Runtime & version* table (C2) and the Handoff log.
 
 ### C3 · Application event log / Timeline
-**Status:** 🟡 Local stopgap · **Owner:** platform-builder · **Plane:** data-plane (app emits/queries at runtime; the control-plane `inspect events` is an observability surface over the same store)
+**Status:** 🟢 Ready for adoption · **Owner:** forge-os · **Plane:** data-plane (app emits/queries at runtime; the control-plane `inspect app-events` is an observability surface over the same store)
 
 - **Needed by:** Timeline (v2); also the substrate Reminders reads for "cold goals."
 - **Reference implementation:** the `events` table + indexes + best-effort `recordEvent()` /
@@ -466,7 +466,49 @@ spec for the platform-builder; *Refactors OUT* is the forge-os plan; the *Platfo
   every mutation calls `forge.events.emit`; `/api/events` becomes a thin proxy (or goes). **Stays
   (domain):** [app/lib/timeline.ts](app/lib/timeline.ts) presentation (`describeEvent`/`sparkKind`/
   heat mapping) consuming platform events.
-- **Platform delivery:** _TODO (platform-builder)_
+- **Platform delivery:**
+  - **Delivered in** — control-plane image
+    `ghcr.io/mardash-ai/forge-control-plane:0.7.0 @ sha256:b4933e46be6af26a655fa565bf3698ad2131fee9412db2ffcc637a86b27b9d6e`
+    **+** data-plane image
+    `ghcr.io/mardash-ai/forge-data-plane @ sha256:107ecff57355eee25f58e0cf4c84a1019d844eaaffaf9c0ead50b01bd5a088cb`
+    — both **multi-arch (`linux/amd64` + `linux/arm64`)**, platform `v0.7.0` / commit `cd7f509`. Bump
+    **both** `FORGE_IMAGE` and `FORGE_DATA_PLANE_IMAGE`. App base image unchanged.
+  - **Plane** (R3) — **data-plane**: the running app emits/queries at runtime (prod: the sidecar). The
+    control plane serves the same routes so `forge dev` works, and `inspect app-events` is the
+    control-plane observability surface. This is the **first app→Forge outbound direction** (all prior
+    capabilities were Forge→app callbacks or env injection).
+  - **Consume it** — HTTP, **app→Forge** (the running app calls Forge; NOT a `./forge` command):
+    - **mechanism:** the app POSTs/GETs the event routes over the internal network. Base URL =
+      **`FORGE_EVENTS_URL`** — prod `http://data-plane:3718`, dev `http://host.docker.internal:3717`
+      (the control plane). A tiny app client (`lib/forge-events.ts`) wraps three calls; `app` is
+      omitted so the sidecar uses its `FORGE_APP_NAME`:
+      - *emit* (best-effort, fire-and-forget): `POST ${FORGE_EVENTS_URL}/app-events` body
+        `{ type, subject?, data? }`. **Swallow all errors** — a failed emit must never break the mutation.
+      - *feed*: `GET ${FORGE_EVENTS_URL}/app-events?subject=<id>&limit=<n>` → `{ events: AppEvent[] }` newest-first.
+      - *latest-by-subject*: `GET ${FORGE_EVENTS_URL}/app-events/latest` → `{ latest: Record<subject, ISO> }` (cold-goal).
+    - **types:** `AppEvent { id; app_id; type: string; subject?: string; data: object; at: ISO }`.
+      `type` + `subject` are **app-defined** (open); `data` is a denormalized snapshot rendered as-is.
+      forge-os maps: `subject = goalId` (so task events show in the goal's feed too), `taskId`/titles/from/to → `data`.
+    - **failure modes:** emit with no `type` → `422`; unknown app → `404`. A missing log reads as an
+      **empty feed** (never throws). The client MUST swallow network/`5xx` on emit (best-effort).
+  - **Wire it in** — (1) bump `FORGE_IMAGE` + `FORGE_DATA_PLANE_IMAGE` → the pins above; (2) add
+    `FORGE_EVENTS_URL` to the **`web`** service in `compose.prod.yaml` (`http://data-plane:3718`) and to
+    the dev `app/compose.yaml` web env (`http://host.docker.internal:3717`); (3) add `lib/forge-events.ts`
+    and call `emit` from each mutation, `feed`/`latest` from the timeline + cold-goal paths. No
+    `package.json` dep (uses `fetch`).
+  - **Detect absence / degrade** — if `FORGE_EVENTS_URL` is unset or the sidecar is unreachable (or an
+    older image → `404`), the client swallows and returns `[]`/`{}`; the app keeps working (timeline
+    empty, no crash). Same graceful-degradation contract the app already has around `recordEvent`.
+  - **Verify** — `curl -X POST $FORGE_EVENTS_URL/app-events -d '{"type":"goal.created","subject":"g1"}'`
+    → `{event}`; `GET /app-events` → newest-first feed; `GET /app-events/latest` → `{"g1":<ts>}`;
+    `forge inspect app-events --app <app>` → the recent feed. (All proven live against the data-plane
+    server this session: emit → feed → subject filter → latest → 422-on-missing-type.)
+  - **Data & migration** — the app's existing `events` rows are **not** auto-migrated. Either
+    **clean-cutover** (start fresh; the log grows from adoption) or backfill by replaying rows into
+    `POST /app-events`. Then delete the `events` table + `recordEvent`/`listEvents`.
+  - **Compatibility / breaking** — additive; no adopted capability affected. Needs **both** image bumps
+    to `0.7.0`. New env `FORGE_EVENTS_URL` on `web` (dev + prod). Cold-goal detection moves from a SQL
+    join to `GET /app-events/latest` + the app's goal list.
 - **Adoption:** _TODO (forge-os)_
 
 ### C4 · Notifications — *(bundle with C2 + C3)*
@@ -860,6 +902,7 @@ Append one line per state change (newest last). `by` = role; `ref` = commit / PR
 | C7 | → ✅ adopted | forge-os | `d367099` | `make deploy` now starts the control plane transiently + runs `forge deploy --app forge-os`; **deleted** `deploy/rollout.sh` (78 lines) + the rollout sequence in make deploy. `FORGE_IMAGE` pinned `0.6.1@482bda5c…`. Zero-downtime + auto-rollback behaviour unchanged; source moved app→platform. ⚠ Box path first run should be **supervised** (control-plane image needs a one-time pull). Human compressed deliver+adopt into one session. Baton → platform-builder (next per sequence: **C3 Event log**). |
 | — | baton freed | platform-builder | `PLATFORM_CAPABILITIES.md` | C7 fully done (delivered + adopted). No ledger write is pending: the **C3** build happens in the *forge* repo, not here. Baton → **`free`** — platform-builder re-acquires it to write the C3 delivery block; forge-os may acquire it to record the supervised **box-deploy verification** in the C7 Adoption block. (Holding it during a build just blocks the other side for no reason.) |
 | C7 | box path verified | forge-os | (human) | supervised box `make deploy` succeeded — the transient-control-plane + `forge deploy` path deploys forge-os end-to-end on the box. ⚠ caveat in the C7 Adoption *Verified* line cleared. Baton acquired for this one write, released → **`free`**. |
+| C3 | → 🟢 ready | platform-builder | `0.7.0@sha256:b4933e46…` + dp `@sha256:107ecff5…` | Application event log delivered (**data-plane**, R3): the running app emits/queries its OWN domain events via `POST`/`GET /app-events` (+ `/app-events/latest`) on both servers — the **first app→Forge direction**. `AppEvent` = open-`type`, subject-keyed, denormalized per-app log (`app-events/<app_id>.jsonl`), separate from the closed `ForgeEvent` catalog. `inspect app-events` for observability. 57/57 tests + verified live (emit→feed→filter→latest→422). Baton (was `free`) → **forge-os** to adopt: delete the `events` table + `recordEvent`/`listEvents`, add `lib/forge-events.ts` + `FORGE_EVENTS_URL`; keep `timeline.ts`. |
 | P3 | → ✅ adopted | forge-os | `202ee28` | bumped the dev control plane `0.4.0 → 0.6.1@482bda5c…` (max over adopted C2/C5/C7; folds in the 0.5.1 P3 fix; arm64 confirmed first) — dev now unified with the `make deploy` transient plane on one pin. Flag-less `provision` converged (P1): only change was `pg_isready -U forge` → `-U forge -d forge_os`; a fresh postgres logged **0** `FATAL: database "forge"`. Re-validated build/test(80/0)/lint on 0.6.1; the `habits-finalize` cron survived the restart. Baton acquired for this one write, released → **`free`**. Next open work: **C3 Event log** (platform-builder builds it in the forge repo). |
 
 ---
