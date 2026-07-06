@@ -100,6 +100,32 @@ Hand off **one** capability at a time, so each refactor stays small and verifiab
 - Independent platform work may proceed in parallel, but **at most one capability sits in 🟢**
   awaiting adoption at any moment.
 
+### R3 · Classify every capability by plane (control-plane vs data-plane)
+
+Forge intends two images: a **control-plane** image (developer/orchestration — today's `FORGE_IMAGE`,
+carrying the build/test/lint + `provision`/`inspect` tooling and the Docker CLI) and a future
+**data-plane** image (production/deploy runtime) that **will not ship developer dependencies**. So
+every capability MUST declare **which plane its runtime dependency lives in**, so Forge knows which
+image must carry it — and so a dev-only dependency never leaks into production, nor a production
+runtime dependency get stranded in dev-only tooling:
+
+- **control-plane** — needed only at dev/build/orchestration time (a supported build/test/lint
+  framework, the `provision`/`inspect`/`explain` commands themselves). Never runs in production.
+- **data-plane** — a dependency the **running app needs in production**: model access (C1), a
+  scheduler (C2), an event store (C3), notifications (C4), an injected secret's *value* (C5), a
+  provisioned Postgres/Redis. Must ship in the data-plane image.
+- **both** — a capability with a control-plane management/dev surface *and* a data-plane runtime
+  surface; say which part is which (e.g. **C5**: the `forge secrets set/list` CLI is control-plane;
+  the encrypted store + runtime injection the app reads is data-plane).
+
+Rule of thumb: if the **production** app breaks without it, it's data-plane; if only a build or a
+`./forge` command would break, it's control-plane. The platform-builder declares the plane in the
+Delivery block; forge-os records it on the row. This is **metadata for Forge**, not work forge-os
+does — forge-os doesn't build the images and today runs only the control-plane image (so every pin in
+*Runtime & version* is a control-plane pin; a data-plane column is added once that image exists, keyed
+off this field). Note the seam: the `provision` *command* is control-plane, but the Postgres/Redis/
+secrets it **provisions** are data-plane — classify the dependency, not the command that sets it up.
+
 ---
 
 ## What earns a row
@@ -169,6 +195,9 @@ These templates define **exactly what information each agent must leave** so the
 
 - **Delivered in** — control-plane image tag **and** digest + platform commit/PR ref. Note the app
   base-image tag too **iff** consuming it requires changing `app/compose.yaml`'s `node:22-…` image.
+- **Plane** (R3) — `control-plane` / `data-plane` / `both`. Which image must carry this capability's
+  runtime dependency, so Forge ships it in the right place and dev deps stay out of production. If
+  **both**, name which surface is control-plane and which is data-plane.
 - **Consume it** — the exact interface the app calls, unambiguous enough to write against:
   - **mechanism**: npm package (name + version) / HTTP endpoint (method + path + how the base URL &
     auth reach the app) / injected runtime global / new `./forge <subcommand>` / env-provided.
@@ -216,6 +245,12 @@ image must change, exactly which capabilities and features are affected.
 capability requires a newer image, that ripples to every feature that adopts it — this table is how
 we see the blast radius before bumping.
 
+**Plane note (R3):** every pin below is a **control-plane** pin — the only image forge-os runs today.
+The `Plane` field on each capability records where its *runtime* dependency belongs; once Forge ships
+a distinct **data-plane** image, the data-plane capabilities (C1–C4, C6, and C5's injection half)
+each get their own pin here in a new column. Control-plane-only capabilities (build/test/`provision`)
+never will.
+
 | Cap | Delivered in (CP image tag @ digest / commit) | App runtime change? | Adopted in (forge-os commit) | App pinned to |
 |---|---|---|---|---|
 | C1 | _TODO (platform-builder)_ | _TODO_ | _TODO (forge-os)_ | _TODO_ |
@@ -261,7 +296,7 @@ spec for the platform-builder; *Refactors OUT* is the forge-os plan; the *Platfo
 *Adoption* blocks are the handoff slots (fill per the templates above).
 
 ### C1 · Agent runtime — model access + Agent Task / Artifact resources
-**Status:** 🟡 Local stopgap · **Owner:** platform-builder
+**Status:** 🟡 Local stopgap · **Owner:** platform-builder · **Plane:** data-plane (the running app calls the model; control-plane only for *inspecting* runs)
 
 - **Needed by:** Planner (v3); every future agent (Researcher, Writer, Scheduler…).
 - **Reference implementation (behavioral spec):** [app/lib/agent.ts](app/lib/agent.ts) (own
@@ -286,7 +321,7 @@ spec for the platform-builder; *Refactors OUT* is the forge-os plan; the *Platfo
 - **Adoption:** _TODO (forge-os)_
 
 ### C2 · Scheduler / background jobs — *(the hard blocker)*
-**Status:** 🔴 Absent · **Owner:** platform-builder
+**Status:** 🔴 Absent · **Owner:** platform-builder · **Plane:** data-plane (jobs execute in production with no user present)
 
 - **Needed by:** Reminders (v2) to *push* alerts; **Habits (v4, shipped this iteration on the
   read-time stopgap)** for recurrence + streak resets.
@@ -313,7 +348,7 @@ spec for the platform-builder; *Refactors OUT* is the forge-os plan; the *Platfo
 - **Adoption:** _TODO (forge-os)_
 
 ### C3 · Application event log / Timeline
-**Status:** 🟡 Local stopgap · **Owner:** platform-builder
+**Status:** 🟡 Local stopgap · **Owner:** platform-builder · **Plane:** data-plane (app emits/queries at runtime; the control-plane `inspect events` is an observability surface over the same store)
 
 - **Needed by:** Timeline (v2); also the substrate Reminders reads for "cold goals."
 - **Reference implementation:** the `events` table + indexes + best-effort `recordEvent()` /
@@ -333,7 +368,7 @@ spec for the platform-builder; *Refactors OUT* is the forge-os plan; the *Platfo
 - **Adoption:** _TODO (forge-os)_
 
 ### C4 · Notifications — *(bundle with C2 + C3)*
-**Status:** 🟡 Local stopgap · **Owner:** platform-builder
+**Status:** 🟡 Local stopgap · **Owner:** platform-builder · **Plane:** data-plane (notifications produced/delivered at runtime, incl. while the user is away)
 
 - **Needed by:** Reminders (v2). **Depends on:** C3 (event source) + C2 (to push).
 - **Reference implementation:** derivation + the `dismissed_notifications` table in
@@ -353,7 +388,7 @@ spec for the platform-builder; *Refactors OUT* is the forge-os plan; the *Platfo
 - **Adoption:** _TODO (forge-os)_
 
 ### C5 · Secrets / credential management — *(quick win — already bit us)*
-**Status:** ✅ Adopted · **Owner:** —
+**Status:** ✅ Adopted · **Owner:** — · **Plane:** both (the `forge secrets set/list` CLI is control-plane; the encrypted store + runtime injection the app reads is data-plane)
 
 - **Needed by:** Planner (`ANTHROPIC_API_KEY`); anything calling a third-party API.
 - **Reference implementation:** hand-wired compose interpolation + a gitignored
@@ -460,7 +495,7 @@ spec for the platform-builder; *Refactors OUT* is the forge-os plan; the *Platfo
   - **Adopted in** — see the *Runtime & version* table (C5) and the Handoff log.
 
 ### C6 · Standard health / telemetry contract — *(minor)*
-**Status:** 🟡 Local stopgap · **Owner:** platform-builder
+**Status:** 🟡 Local stopgap · **Owner:** platform-builder · **Plane:** data-plane (the readiness/health contract is exercised against the running app in production)
 
 - **Needed by:** every app (compose healthcheck already assumes `/api/health`).
 - **Reference implementation:** [app/lib/health.ts](app/lib/health.ts) + `/api/health` — boilerplate.
@@ -503,7 +538,10 @@ Build these when a feature *needs* them, not because the roadmap lists them:
 ## Platform issues & requests (for the platform-builder)
 
 **Not** new capabilities — defects / UX gaps in **existing** Forge behavior that forge-os hit while
-adopting. The platform-builder owns the fix; track these alongside capability work.
+adopting. The platform-builder owns the fix; track these alongside capability work. These are
+**control-plane** by nature (they're about the `./forge` tooling itself, e.g. `provision`), which is
+exactly why the plane seam from R3 matters: `provision` is control-plane, but the Postgres/secrets it
+manages are data-plane.
 
 ### P1 · `provision` is destructive (replace-from-flags, not additive) — ✅ fixed & verified in 0.3.0 · Owner: —
 - **Hit during:** C5 adoption. `forge provision --app forge-os --secret ANTHROPIC_API_KEY` (without
@@ -587,5 +625,6 @@ Append one line per state change (newest last). `by` = role; `ref` = commit / PR
 Keeping this ledger current is **step 6 of the `add-a-feature` skill**. When forge-os finishes a
 feature, ask *what generic machinery did I just build inside `./app`?* — new platform-shaped code →
 🟡 row (cite files); a wall Forge can't do → 🔴 row; a capability now consumed → ✅ and thin the
-local code. A feature that adds **no** platform pressure is a signal it may be pure app surface, not
-a wind-tunnel feature.
+local code. For every row, also tag its **plane** (R3): would the **production** app break without it
+(data-plane) or only a build / `./forge` command (control-plane)? A feature that adds **no** platform
+pressure is a signal it may be pure app surface, not a wind-tunnel feature.

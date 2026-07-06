@@ -17,6 +17,12 @@ new backwards-compatible features, **PATCH** for backwards-compatible fixes.
   skill now maintains it automatically on every commit.
 - Write baton (single-writer lock) at the top of `PLATFORM_CAPABILITIES.md` — serializes edits to
   the two-agent capability ledger across the human relay, guarding against stale-overwrite.
+- **Requirement R3 in `PLATFORM_CAPABILITIES.md`: classify every capability by plane** — `control-plane`
+  (dev/orchestration; build/test/`provision` tooling) vs `data-plane` (production runtime dependency
+  the running app needs) vs `both`. Added a `Plane` field to each capability and to the delivery-block
+  template so Forge knows which of its future control-plane / data-plane images must carry each
+  capability, and dev dependencies don't leak into production. Classified the existing ledger: C1–C4
+  and C6 are data-plane, C5 spans both, and the `provision`/build/test tooling is control-plane.
 
 ### Changed
 
