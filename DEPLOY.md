@@ -87,16 +87,38 @@ multi-arch (`amd64` + `arm64`).
 
 | Command | What it does |
 |---|---|
-| `make deploy` | pull images (**non-fatal** — see keychain note) → `up -d` → `ps`. `release/deploy.sh` runs `git pull --ff-only` first, so this deploys the current checkout. |
+| `make deploy` | pull images (**non-fatal** — see keychain note) → reconcile `postgres` → **zero-downtime roll of `web`** ([`deploy/rollout.sh`](deploy/rollout.sh)) → reconcile `data-plane` → `ps`. `release/deploy.sh` runs `git pull --ff-only` first, so this deploys the current checkout. |
 | `make deploy-ps` | container status |
 | `make deploy-logs` | tail all logs |
 | `make deploy-config` | validate `compose.prod.yaml` + `.env` (no changes) |
 | `make deploy-down` | stop the stack, **keep** the data volumes |
 
+## Zero-downtime deploys
+
+`web` is rolled **start-first** so `forge-os.mardash.ai` never loses its backend. A plain
+`docker compose up -d` recreates a single-replica service *stop-first* (stop old → start new), and
+during that gap Traefik has no healthy backend → a few seconds of 502s. Instead [`deploy/rollout.sh`](deploy/rollout.sh):
+
+1. brings up a **second `web`** on the new image alongside the old (both join `proxy`, so Traefik
+   load-balances across them — and, via the `loadbalancer.healthcheck` labels in
+   [`compose.prod.yaml`](compose.prod.yaml), only routes to a replica once it passes `/api/health`);
+2. waits until the new replica is **healthy** (Docker healthcheck);
+3. drains + removes the old replica (SIGTERM, up to `stop_grace_period: 15s`).
+
+There is always ≥1 healthy backend, so no request 502s. If the new replica never becomes healthy
+the old one is left serving and the deploy **fails loudly** — an automatic, safe rollback. Only
+`web` is rolled; `postgres` reconciles in place (a schema/image change there is a separate, rare
+concern), and the `data-plane` sidecar isn't public-facing.
+
+> Verify a roll had zero downtime: run a probe against the public URL *during* a deploy —
+> `while :; do curl -sf -o /dev/null https://forge-os.mardash.ai/api/health && printf . || printf X; sleep 0.2; done`
+> — every mark should be a `.` (success); an `X` is a dropped request.
+
 ## Rollback
 
 Set the previous digest(s) in `.env` on the box and re-run `make deploy` (or `./release/deploy.sh`).
-Pinned digests make rollback deterministic.
+Pinned digests make rollback deterministic. (The roll itself also auto-rolls-back: a new replica
+that never gets healthy is discarded and the old one keeps serving.)
 
 ## Notes that bite in real prod
 

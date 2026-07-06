@@ -16,6 +16,9 @@ services:
     image: ${APP_IMAGE:-ghcr.io/mardash-ai/forge-os-app:latest}
     pull_policy: missing
     restart: unless-stopped
+    # Give in-flight requests time to finish on SIGTERM before SIGKILL, so a rolling
+    # deploy drains the old replica cleanly instead of cutting live connections.
+    stop_grace_period: 15s
     environment:
       - NODE_ENV=production
       - PORT=3000
@@ -40,6 +43,13 @@ services:
       - "traefik.http.routers.forge-os.tls.certresolver=letsencrypt"
       - "traefik.http.services.forge-os.loadbalancer.server.port=3000"
       - "traefik.docker.network=proxy"
+      # Active health-gating for zero-downtime rolls: Traefik only routes to a replica once
+      # it passes /api/health. During a rolling deploy (deploy/rollout.sh) the new container
+      # never receives traffic before Next.js is serving, and the old keeps serving until it's
+      # drained — so there is always ≥1 healthy backend and no request 502s.
+      - "traefik.http.services.forge-os.loadbalancer.healthcheck.path=/api/health"
+      - "traefik.http.services.forge-os.loadbalancer.healthcheck.interval=5s"
+      - "traefik.http.services.forge-os.loadbalancer.healthcheck.timeout=3s"
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://localhost:3000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
       interval: 10s
