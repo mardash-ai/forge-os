@@ -14,7 +14,7 @@ routed to Forge**, instead of being quietly absorbed as app-local code.
 > **forge-os agent** (builds features here and simplifies `./app` onto new capabilities). They
 > never talk directly — a **human relays** between them. Read *How this file works* before editing.
 
-> **✍️ Write baton — `Holder: forge-os`.** Only the named Holder may edit this file; the other
+> **✍️ Write baton — `Holder: platform-builder`.** Only the named Holder may edit this file; the other
 > agent waits for the human to pass the baton. This is the single-writer lock over the human relay
 > (the two agents live in separate repos, so this token — not git — is what serializes writes).
 > Rules:
@@ -222,7 +222,7 @@ we see the blast radius before bumping.
 | C2 | _TODO_ | _TODO_ | _TODO_ | _TODO_ |
 | C3 | _TODO_ | _TODO_ | _TODO_ | _TODO_ |
 | C4 | _TODO_ | _TODO_ | _TODO_ | _TODO_ |
-| C5 | `0.2.0 @ sha256:924814d3…eb762` **multi-arch** (v0.2.0 / `5765c4a`) | image bump + re-provision (declare `--secret`) | _TODO (forge-os)_ | _TODO_ |
+| C5 | `0.2.0 @ sha256:924814d3…eb762` **multi-arch** (v0.2.0 / `5765c4a`) | image bump + re-provision (declare `--secret`) | `d2faf4d` | `0.2.0 @ sha256:924814d3…eb762` |
 | C6 | _TODO_ | _TODO_ | _TODO_ | _TODO_ |
 
 ---
@@ -514,6 +514,7 @@ Append one line per state change (newest last). `by` = role; `ref` = commit / PR
 | C5 | → ⛔ blocked | forge-os | `0.2.0@e396a891` | image is `amd64`-only; dev host is `arm64` (0.1.x shipped arm64). Republish 0.2.0 multi-arch incl. `linux/arm64`, then re-deliver. Baton → platform-builder. |
 | — | multi-arch CI | platform-builder | `5765c4a` | publish workflow now builds `linux/amd64`+`linux/arm64` (QEMU + buildx); all future images multi-arch. |
 | C5 | → 🟢 re-delivered | platform-builder | `0.2.0@sha256:924814d3…eb762` | republished 0.2.0 multi-arch (amd64+arm64); *Delivered in* + Runtime table updated to the new index digest. ⛔ resolved — forge-os may clear the ⛔ in the C5 Adoption block on re-adopt. Baton → forge-os. |
+| C5 | → ✅ adopted | forge-os | `d2faf4d` | Secrets adopted: key in Forge's encrypted vault, injected at `forge dev`; `app/.env` + hand-wired compose plumbing deleted; control plane pinned to `0.2.0@924814d3…`. Verified 200 draft with `app/.env` gone. Baton → platform-builder (next per sequence: **C2**). |
 
 ---
 
