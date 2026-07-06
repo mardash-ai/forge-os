@@ -1,0 +1,80 @@
+# Forge-os PRODUCTION stack — the app + a Forge DATA-PLANE sidecar + Postgres.
+#
+# There is NO control plane here (no build/test/lint, no ./forge, no Docker socket).
+# The data-plane sidecar provides the runtime capabilities the app needs (scheduler,
+# secrets store), calling back into `web` over the compose network.
+#
+# Pin images by digest for a reproducible deploy (R1); the :latest defaults are for
+# convenience. Copy .env.prod.example -> .env and adjust. Bring up with:
+#   docker compose -f compose.prod.yaml up -d
+name: forge-os-prod
+
+services:
+  web:
+    image: ${APP_IMAGE:-ghcr.io/mardash-ai/forge-os-app:latest}
+    pull_policy: missing
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - HOSTNAME=0.0.0.0
+      - DATABASE_URL=${DATABASE_URL:-postgres://forge:forge@postgres:5432/forge_os}
+      # Deploy-time secret delivery — empty degrades gracefully (AI drafting 503s,
+      # app stays up). In real prod, source from your platform's secret store.
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "${WEB_PORT:-3000}:3000"
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:3000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    restart: unless-stopped
+
+  # Forge DATA-PLANE sidecar — runs the scheduler (C2) + secrets store (C5) and
+  # calls back into `web`. Slim image, no dev deps. Not published to the host.
+  data-plane:
+    image: ${FORGE_DATA_PLANE_IMAGE:-ghcr.io/mardash-ai/forge-data-plane:latest}
+    pull_policy: missing
+    environment:
+      - PORT=3718
+      - FORGE_STATE_DIR=/state
+      - FORGE_APP_NAME=forge-os
+      # Reach the app over the compose network — no provisioned state required.
+      - FORGE_APP_CALLBACK_HOST=web
+      - FORGE_APP_CALLBACK_PORT=3000
+      # Master key for the encrypted secret store (set a real value in prod).
+      - FORGE_SECRETS_KEY=${FORGE_SECRETS_KEY:-}
+      # Scheduled jobs registered at boot (see deploy/jobs.json).
+      - FORGE_JOBS_FILE=/config/jobs.json
+      # Scheduler tick interval (ms). Empty = default (20s); lower it to react faster.
+      - FORGE_SCHEDULER_TICK_MS=${FORGE_SCHEDULER_TICK_MS:-}
+    volumes:
+      - forge_state:/state
+      - ./deploy/jobs.json:/config/jobs.json:ro
+    depends_on:
+      web:
+        condition: service_started
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      - POSTGRES_USER=forge
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-forge}
+      - POSTGRES_DB=forge_os
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U forge"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  forge_state:
