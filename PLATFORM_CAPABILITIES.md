@@ -58,6 +58,35 @@ through a lifecycle; the **Owner** is whoever has the next action.
 
 ---
 
+## Requirements (non-negotiable)
+
+Two rules bind **both** agents. These are **MUST**, not preferences — a turn that violates one is
+incomplete and gets bounced ⛔.
+
+### R1 · Pin every image — never `latest`
+
+Reproducibility depends on exact versions:
+- The platform-builder's **first required action** is to pin the current control-plane **baseline**
+  to a concrete `tag @ sha256:digest` and record it under *Runtime & version → Baseline*, replacing
+  today's `latest`. That pinned tag is the floor every capability builds on.
+- Every capability's *Delivered in* field MUST carry a concrete `tag @ sha256:digest` (plus the app
+  base-image tag if it changes). A delivery with `latest`, a bare tag, or no digest is **incomplete**
+  — forge-os bounces it ⛔.
+- On adoption, forge-os MUST pin that exact `tag @ digest` in `app/compose.yaml` / `FORGE_IMAGE` and
+  record it under *Now runs on*. **No `latest` may appear in any adopted runtime config.**
+
+### R2 · One capability per relay
+
+Hand off **one** capability at a time, so each refactor stays small and verifiable:
+- The platform-builder sets **exactly one** capability to 🟢 per relay, then stops and notifies the
+  human. Do **not** batch multiple 🟢 hand-offs.
+- forge-os drives that capability to ✅ (or bounces it ⛔) and notifies the human **before** the next
+  one is handed over.
+- Independent platform work may proceed in parallel, but **at most one capability sits in 🟢**
+  awaiting adoption at any moment.
+
+---
+
 ## What earns a row
 
 A capability belongs here when it is **both** (1) **genuinely needed** by a shipped or imminent
@@ -82,15 +111,16 @@ black-box consumer). This file is your work queue and your handoff channel. For 
 3. **Fill the Platform delivery block completely** using the field template in *What each side
    records*. Missing any field means the forge-os agent cannot adopt it — it will bounce the
    capability back as ⛔.
-4. **Pin versions.** Record the **control-plane image tag/digest** (and app base-image tag, if it
-   must change) that first provides the capability, in *Delivered in* and the *Runtime & version*
-   table. Never leave it as `latest` — that drifts and breaks reproducibility.
+4. **Pin versions (R1).** Record the **control-plane image `tag @ sha256:digest`** (and app
+   base-image tag, if it must change) that first provides the capability, in *Delivered in* and the
+   *Runtime & version* table — and pin the baseline floor first. Never `latest` (see **R1**).
 5. **Preserve graceful degradation.** When the capability is absent or unconfigured, the app must
    be able to *detect* that and degrade (not crash) — e.g. C5 must keep the "return 503 when no
    key" behavior expressible. Document how to detect absence.
 6. **Update this file in the same change that ships the capability** — don't let the ledger drift
    from the platform. Set status → 🟢 and Owner → forge-os, append to the Handoff log, then **stop
-   touching that capability** and notify the human. The forge-os agent takes it from there.
+   touching that capability** and notify the human. The forge-os agent takes it from there. Ship
+   **one capability per relay** — never set more than one to 🟢 at a time (see **R2**).
 7. **Don't invent capabilities.** Add a new `Cn` row only if a real forge-os need appears (or you
    split an existing one); keep the *What earns a row* / *Deferred* discipline. If you need
    something from forge-os to proceed, set the row ⛔ with Owner → forge-os and say what you need.
@@ -104,7 +134,7 @@ When the human says a capability is 🟢 Ready:
    the human — do not guess.
 2. **Bump the runtime** to the *Delivered in* version and apply the *Wire it in* steps (image tag
    in `app/compose.yaml`, any `./forge provision` flag, env, `package.json` dep). Pin the exact
-   version — record it in *Now runs on*.
+   `tag @ digest` — never `latest` — and record it in *Now runs on* (see **R1**).
 3. **Refactor `./app` onto the capability** per *Refactors OUT*: replace the stopgap with the
    documented client, **delete** the named tables/files/routes, keep the domain code.
 4. **Validate + verify**: `./forge lint/build/test` green, then drive the real flow using the
@@ -162,7 +192,8 @@ image must change, exactly which capabilities and features are affected.
 
 **Baseline today (no capability adopted yet):**
 - **Control-plane image:** `ghcr.io/mardash-ai/forge-control-plane` (`FORGE_IMAGE`, currently
-  `latest` — capabilities must pin a real tag when they land).
+  `latest`). ⛔ **Per R1, the platform-builder must replace this with a concrete
+  `tag @ sha256:digest` floor as its first action** — everything else pins against it.
 - **App web image:** `node:22-bookworm-slim` — [app/compose.yaml](app/compose.yaml).
 - **App db image:** `postgres:16-alpine`.
 
