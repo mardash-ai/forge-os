@@ -14,7 +14,7 @@ routed to Forge**, instead of being quietly absorbed as app-local code.
 > **forge-os agent** (builds features here and simplifies `./app` onto new capabilities). They
 > never talk directly — a **human relays** between them. Read *How this file works* before editing.
 
-> **✍️ Write baton — `Holder: platform-builder`.** Only the named Holder may edit this file; the other
+> **✍️ Write baton — `Holder: forge-os`.** Only the named Holder may edit this file; the other
 > agent waits for the human to pass the baton. This is the single-writer lock over the human relay
 > (the two agents live in separate repos, so this token — not git — is what serializes writes).
 > Rules:
@@ -690,6 +690,24 @@ manages are data-plane.
 - **Ask:** add `forge secrets unset --app <app> --name <NAME>` (idempotent; `404` unknown app; never
   logs the value). Lets forge-os demonstrate graceful degradation live and supports clean rotation.
 
+### P3 · Generated Postgres healthcheck probes a nonexistent db — 🟢 fixed in 0.5.1 · Owner: forge-os (bump + re-provision)
+- **Context:** `generateCompose` (control plane) emitted `test: ["CMD-SHELL", "pg_isready -U forge"]`
+  with no `-d`. `pg_isready` defaults the target db to the **user** name (`forge`) — but the db is the
+  **app** name (`forge_os`), so for any app whose name ≠ `forge` the Postgres container logged a
+  harmless-but-alarming `FATAL: database "forge" does not exist` every 10s. Surfaced by the forge-os
+  prod deploy. (Prod `compose.prod.yaml` was hand-patched at the time; this fixes it **at the source**
+  so every *generated* dev `compose.yaml` is correct too.)
+- **Fix (0.5.1):** the healthcheck now names the db it already sets — `pg_isready -U forge -d <app>` —
+  so the probe hits the real database and the FATAL spam stops. Regression test added
+  (`tests/provision-converge.test.ts`). No behavior change beyond the probe target; the volume/data
+  are untouched — a failing healthcheck never dropped data, it only wrote log noise.
+- **Delivered in:** `0.5.1 @ sha256:f4987ac227c942c638e31ac8f559db36a8f593e2bd80face329b9c3288060f7d`
+  **multi-arch** (amd64+arm64) · v0.5.1 / `9bdaa0f`.
+- **Adopt (forge-os):** bump `FORGE_IMAGE` to the pin above and re-run `forge provision` (no flags — it
+  converges via P1) to regenerate the dev `compose.yaml` with the fixed healthcheck. Verify:
+  `docker compose logs postgres` shows **no** `FATAL: database "forge"`. Purely cosmetic (dev-log
+  noise) and prod is already correct — safe to fold into your next turn rather than a dedicated relay.
+
 ---
 
 ## Handoff log
@@ -715,6 +733,7 @@ Append one line per state change (newest last). `by` = role; `ref` = commit / PR
 | — | requirement R3 | forge-os | `ac48e76` | added **R3 · classify every capability by plane** (control-plane / data-plane / both) + a `Plane` field on each row and in the delivery template; classified C1–C4 + C6 as data-plane, C5 as both, provisioning/build/test (+ P1) as control-plane. Under a one-turn baton grant from the human; baton stays with **platform-builder** (C2 + declare `Plane` on delivery going forward). |
 | C2 | → 🟢 ready | platform-builder | `0.4.0@sha256:9d216618…1a47` | Scheduler delivered (**data-plane**, R3): durable recurring (interval + UTC cron) / one-shot jobs, HTTP callback into the app, retry-with-backoff + resume-on-restart, observable via `inspect jobs` + `JobRan`/`JobRunFailed` facts. Habits' streak reset + Reminders' push can now move off read-time derivation. Baton → forge-os. |
 | C2 | → ✅ adopted | forge-os | `95ba999` | bumped to `0.4.0` (arm64 in index confirmed). Added idempotent UTC-midnight `POST /api/cron/habits-finalize` that persists `habit_streak_breaks` at the period boundary; pure `finalizeStreak` + 8 tests; kept read-time `computeStreak` as the source-of-truth safety net. Verified the scheduler fires on cadence (`runs:3` succeeded, `JobRan` facts, cron `next_run_at`=next UTC 00:05). Reminders push **deferred to C4** (no channel yet). `lib/db.ts` 588→656 (C2 is additive). Baton → platform-builder (next per sequence: **C3 Event log**). |
+| P3 | → 🟢 fixed | platform-builder | `0.5.1@sha256:f4987ac2…60f7d` | generated Postgres healthcheck now names the db (`pg_isready -U forge -d <app>`) — was `-U forge` only, which probes a nonexistent db "forge" and spammed `FATAL` every 10s for any app whose name ≠ `forge`. Surfaced by the forge-os prod deploy (prod compose was hand-patched; this fixes the **source** so every generated dev compose is correct). Regression test added; no data ever at risk. Interrupt fix ahead of C3. Baton → forge-os (bump + re-provision to clear dev spam, or fold into next turn; then pass back for **C3**). |
 
 ---
 
