@@ -191,9 +191,9 @@ Both agents must agree on image versions so the app is reproducible and so we kn
 image must change, exactly which capabilities and features are affected.
 
 **Baseline today (no capability adopted yet):**
-- **Control-plane image:** `ghcr.io/mardash-ai/forge-control-plane` (`FORGE_IMAGE`, currently
-  `latest`). ⛔ **Per R1, the platform-builder must replace this with a concrete
-  `tag @ sha256:digest` floor as its first action** — everything else pins against it.
+- **Control-plane image:** `ghcr.io/mardash-ai/forge-control-plane` (`FORGE_IMAGE`), pinned floor
+  **`0.1.1 @ sha256:b2ba103f183fc8e1923129c077611379fb7265f9d688f54d0e96309a754478b3`** (was
+  `latest`). Every capability builds on this floor (R1).
 - **App web image:** `node:22-bookworm-slim` — [app/compose.yaml](app/compose.yaml).
 - **App db image:** `postgres:16-alpine`.
 
@@ -207,7 +207,7 @@ we see the blast radius before bumping.
 | C2 | _TODO_ | _TODO_ | _TODO_ | _TODO_ |
 | C3 | _TODO_ | _TODO_ | _TODO_ | _TODO_ |
 | C4 | _TODO_ | _TODO_ | _TODO_ | _TODO_ |
-| C5 | _TODO_ | _TODO_ | _TODO_ | _TODO_ |
+| C5 | `0.2.0 @ sha256:e396a891…dbda1` (v0.2.0 / `0b730b6`) | image bump + re-provision (declare `--secret`) | _TODO (forge-os)_ | _TODO_ |
 | C6 | _TODO_ | _TODO_ | _TODO_ | _TODO_ |
 
 ---
@@ -338,7 +338,7 @@ spec for the platform-builder; *Refactors OUT* is the forge-os plan; the *Platfo
 - **Adoption:** _TODO (forge-os)_
 
 ### C5 · Secrets / credential management — *(quick win — already bit us)*
-**Status:** 🔴 Absent · **Owner:** platform-builder
+**Status:** 🟢 Ready for adoption · **Owner:** forge-os
 
 - **Needed by:** Planner (`ANTHROPIC_API_KEY`); anything calling a third-party API.
 - **Reference implementation:** hand-wired compose interpolation + a gitignored
@@ -353,7 +353,69 @@ spec for the platform-builder; *Refactors OUT* is the forge-os plan; the *Platfo
 - **Refactors OUT once adopted:** remove the `ANTHROPIC_API_KEY=${…}` line from
   [app/compose.yaml](app/compose.yaml), the `app/.env` convention, and the `.env.example` doc.
   **Stays:** the graceful-degradation semantics (`isPlannerConfigured()`), sourced from the platform.
-- **Platform delivery:** _TODO (platform-builder)_
+- **Platform delivery:**
+  - **Delivered in** — control-plane image
+    `ghcr.io/mardash-ai/forge-control-plane:0.2.0 @ sha256:e396a891c7ad1a1f39d2f0aa4c019f90539a2f2efa01d29fe9d62e447a7dbda1`
+    (platform `v0.2.0` / commit `0b730b6`). **App base image unchanged** (`node:22-bookworm-slim`) —
+    no `app/compose.yaml` base-image change.
+  - **Consume it** — a new `./forge` surface over the control-plane API (the Builder/agent calls
+    these, not app code):
+    - **mechanism:**
+      - *Declare* a needed secret: `forge provision --app <app> --secret <NAME>` (repeatable) **or**
+        add `"secrets": ["<NAME>"]` to `app/forge.app.json`, then re-provision. Re-provision
+        regenerates `app/compose.yaml` with a Forge-managed `- <NAME>=${<NAME>:-}` env line.
+      - *Set* (encrypted): `forge secrets set --app <app> --name <NAME> --value <v>` — or
+        `--from-env [ENV]` to read from your shell without putting the value in history.
+      - *List*: `forge secrets list --app <app>` (or `forge inspect secrets --app <app>`) — **names only**.
+      - *Inject*: automatic at `forge dev` — Forge decrypts the values in memory and passes them into
+        the app container; no app-side call.
+      - (HTTP under the hood: `POST /capabilities/set-secret {app,name,value}`,
+        `POST /capabilities/inspect {app,type:"secrets"}`,
+        `POST /capabilities/provision-environment {app,secrets:[]}`.)
+    - **signatures + types:**
+      - `set-secret` in `{ app: string; name: string /^[A-Za-z_][A-Za-z0-9_]*$/; value: string /*non-empty*/ }`
+        → `Secret` resource `{ id; type:"Secret"; app_id; name; status:"set"; algo:"aes-256-gcm";
+        created_at; updated_at }` — **never** the value.
+      - `inspect secrets` → `Inspection` with `data: Array<{ name: string; set: true }>`.
+      - `provision` in gains `secrets?: string[]`.
+      - In the running container each declared secret is a normal env var (`process.env.<NAME>`): the
+        value if set, an **empty string** if declared-but-unset.
+    - **failure modes:** `set-secret` → `422 invalid_input` (name not a valid env-var identifier, or
+      empty value), `404 not_found` (unknown app). `inspect secrets` → `404` (unknown app). No path
+      ever returns or logs the value.
+  - **Wire it in** —
+    1. Bump `FORGE_IMAGE` → `ghcr.io/mardash-ai/forge-control-plane:0.2.0 @ sha256:e396a891c7ad1a1f39d2f0aa4c019f90539a2f2efa01d29fe9d62e447a7dbda1`
+       (pin the digest — no `latest`).
+    2. Declare the key: `forge provision --app <app> --secret ANTHROPIC_API_KEY` (or add it to
+       `forge.app.json` `secrets` and re-provision).
+    3. Store it: `forge secrets set --app <app> --name ANTHROPIC_API_KEY --from-env ANTHROPIC_API_KEY`.
+    No `app/package.json` change; no new compose service. *Optional:* set `FORGE_SECRETS_KEY` on the
+    control-plane service for a stable off-disk master key (else a `0600` key file is generated under
+    `.forge/secrets/`).
+  - **Detect absence / degrade** — keep `isPlannerConfigured()` =
+    `Boolean(process.env.ANTHROPIC_API_KEY?.trim())`. When unset, the compose line resolves to empty,
+    so the var is present-but-empty → the existing **503** path holds and the app never crashes.
+    `forge secrets list --app <app>` reports what's set without revealing values.
+  - **Verify** —
+    ```
+    forge provision --app <app> --secret ANTHROPIC_API_KEY
+    forge secrets set --app <app> --name ANTHROPIC_API_KEY --from-env ANTHROPIC_API_KEY
+    forge secrets list --app <app>          # -> [{"name":"ANTHROPIC_API_KEY","set":true}]
+    grep ANTHROPIC_API_KEY app/compose.yaml # -> `- ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}` (no value)
+    forge dev --app <app>
+    curl -sf -X POST http://localhost:3000/api/goals/<goalId>/plan   # -> 200 (a plan), not 503
+    ```
+    Then degradation: with **no** secret set (fresh app / before `secrets set`), the same POST returns
+    **503** and the app stays up. The key never appears in `app/compose.yaml`, the image, or any
+    tracked file; `.forge/secrets/vault-*.json` holds ciphertext only.
+  - **Data & migration** — **clean cutover.** No import. Re-set the key once via `forge secrets set`
+    (dev data). Abandon the old `app/.env` value — and **rotate it**, since a real key previously
+    landed in a tracked file.
+  - **Compatibility / breaking** — **non-breaking.** `generateCompose` adds secret lines only when
+    secrets are declared, so apps declaring none are byte-for-byte unchanged; no already-adopted
+    capability is affected (none yet). Requires a **re-provision + restart of `forge dev`** to pick up
+    the compose line and injection; `build`/`test`/`lint` are unaffected (injection is at
+    runtime/`dev`, where the Planner runs).
 - **Adoption:** _TODO (forge-os)_
 
 ### C6 · Standard health / telemetry contract — *(minor)*
@@ -407,6 +469,8 @@ Append one line per state change (newest last). `by` = role; `ref` = commit / PR
 | — | protocol added | forge-os | `258c24b` | two-agent contract, templates, version table |
 | — | requirements R1/R2 | forge-os | `c682343` | pin-every-image + one-capability-per-relay made MUST |
 | C2 | evidence sharpened | forge-os | `5b8b448` | Habits (v4) shipped on the read-time stopgap — reset needs a scheduler |
+| — | baseline pinned | platform-builder | `0.1.1@sha256:b2ba103f…` | R1 first action: control-plane floor pinned off `latest` |
+| C5 | → 🟢 ready | platform-builder | `v0.2.0` / `0b730b6` | Secrets delivered (encrypted store + runtime injection). Built out of Recommended order (C2 first) to de-risk the first full relay — C5 is the isolated quick win. |
 
 ---
 
