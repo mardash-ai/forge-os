@@ -6,6 +6,22 @@ through the **Forge** platform, not by writing files and running build tools dir
 **Every repo is a single app, and it lives at `./app`.** (The control plane runs in
 single-app mode, `FORGE_APP_LAYOUT=single`.)
 
+## Why this project exists — the wind tunnel
+
+forge-os is **not just a demo — it is the wind tunnel for Forge.** Every new Forge capability
+should exist because *this application genuinely needs it* — not because the architecture says
+it should. That mirrors how durable platforms actually grew:
+
+- Git was built to support Linux kernel development.
+- Kubernetes evolved to run Google's workloads.
+- Stripe built many internal platform capabilities to support real products.
+
+So when you choose and shape features, prefer the one that puts **real pressure** on the
+platform, and name the Forge capability each feature forces into existence (the `PROJECT_IDEA.md`
+roadmap tracks this — e.g. AI → the Agent framework, reminders → background jobs). A feature
+that exercises a genuine gap is worth more than one that just adds surface. The app should
+continuously pressure Forge to become a better platform.
+
 ## The one rule
 
 **Do all app lifecycle work through `./forge` (or `./new-app`). Never run `docker`, `npm`,
