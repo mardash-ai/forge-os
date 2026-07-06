@@ -55,6 +55,13 @@ new backwards-compatible features, **PATCH** for backwards-compatible fixes.
 
 ### Fixed
 
+- **Adopted the P3 fix and unified the control-plane pin at `0.6.1`.** Bumped the dev control plane
+  `0.4.0 → 0.6.1@sha256:482bda5c…` (the max over adopted C2/C5/C7, which folds in P3's `0.5.1`
+  healthcheck fix) and re-provisioned. The generated Postgres healthcheck now names the database
+  (`pg_isready -U forge -d forge_os`), silencing the `FATAL: database "forge" does not exist` log
+  spam that appeared every 10s. Dev and the `make deploy` transient control plane now run one pinned
+  image. Re-validated: build/test (80/0)/lint green; the `habits-finalize` cron job survived the
+  restart.
 - C5 was briefly blocked because the delivered `0.2.0` image was `amd64`-only on an `arm64` host;
   the platform-builder republished it multi-arch, unblocking adoption.
 - **Removed dangerous guidance in the `provision-app` skill** (and mirrored the fix to

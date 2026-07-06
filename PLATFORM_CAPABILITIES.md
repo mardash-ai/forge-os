@@ -251,6 +251,12 @@ a distinct **data-plane** image, the data-plane capabilities (C1–C4, C6, and C
 each get their own pin here in a new column. Control-plane-only capabilities (build/test/`provision`)
 never will.
 
+**Live dev pin (2026-07-06):** the tracked root [compose.yaml](compose.yaml) now defaults to
+**`0.6.1 @ sha256:482bda5c…c61e`** — the **max over adopted** C2/C5/C7, folding in the **P1** and
+**P3** fixes. Dev (`make up`) and the `make deploy` transient control plane are now unified on this
+one pin (the per-row *App pinned to* values below record each capability's adoption-time pin; this is
+the current live floor). Bumping past a row's pin is safe because every delivery has been additive.
+
 | Cap | Delivered in (CP image tag @ digest / commit) | App runtime change? | Adopted in (forge-os commit) | App pinned to |
 |---|---|---|---|---|
 | C1 | _TODO (platform-builder)_ | _TODO_ | _TODO (forge-os)_ | _TODO_ |
@@ -796,7 +802,7 @@ manages are data-plane.
 - **Ask:** add `forge secrets unset --app <app> --name <NAME>` (idempotent; `404` unknown app; never
   logs the value). Lets forge-os demonstrate graceful degradation live and supports clean rotation.
 
-### P3 · Generated Postgres healthcheck probes a nonexistent db — 🟢 fixed in 0.5.1 · Owner: forge-os (bump + re-provision)
+### P3 · Generated Postgres healthcheck probes a nonexistent db — ✅ fixed (0.5.1) & adopted · Owner: —
 - **Context:** `generateCompose` (control plane) emitted `test: ["CMD-SHELL", "pg_isready -U forge"]`
   with no `-d`. `pg_isready` defaults the target db to the **user** name (`forge`) — but the db is the
   **app** name (`forge_os`), so for any app whose name ≠ `forge` the Postgres container logged a
@@ -813,6 +819,15 @@ manages are data-plane.
   converges via P1) to regenerate the dev `compose.yaml` with the fixed healthcheck. Verify:
   `docker compose logs postgres` shows **no** `FATAL: database "forge"`. Purely cosmetic (dev-log
   noise) and prod is already correct — safe to fold into your next turn rather than a dedicated relay.
+- **Verified (forge-os):** bumped the dev control plane straight to **`0.6.1 @ sha256:482bda5c…c61e`**
+  — the **max over adopted** C2/C5/C7 (0.6.1 ⊇ the 0.5.1 P3 fix), rather than 0.5.1, so dev and the
+  `make deploy` transient control plane run **one** pinned image instead of a two-minor split (arm64
+  confirmed in the index first). A flag-less `forge provision` converged (P1): services `[web,
+  postgres]`, `ports:{web:3000, postgres:5433}` and the `ANTHROPIC_API_KEY` secret all preserved — the
+  **only** `app/compose.yaml` change was `pg_isready -U forge` → `-U forge -d forge_os`. A freshly
+  created postgres container logged **0** `FATAL: database "forge"` (was every 10s). Re-validated on
+  0.6.1: `build_7608e7eb` / test **80/0** / lint **0**; the `habits-finalize` cron job survived the
+  control-plane restart (durable `.forge` state). Dev is now unified with prod on 0.6.1.
 
 ---
 
