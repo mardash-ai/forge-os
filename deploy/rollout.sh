@@ -20,6 +20,7 @@ set -euo pipefail
 PROD="docker compose -f compose.prod.yaml"
 SVC="web"
 TIMEOUT="${ROLLOUT_TIMEOUT:-120}"   # seconds to wait for the new replica to become healthy
+PROXY_NET="${PROXY_NET:-proxy}"     # external Traefik network (compose.prod.yaml: networks.proxy)
 
 before="$($PROD ps -q "$SVC" || true)"
 count="$(echo $before | wc -w | tr -d ' ')"
@@ -67,9 +68,17 @@ for id in $new; do
   done
 done
 
-# New replica is healthy and (via the Traefik healthcheck) already taking traffic.
-# Drain + remove the old replica(s); `docker stop` sends SIGTERM and waits stop_grace_period.
-echo "→ new replica healthy; draining + removing the old container(s)…"
+# New replica is healthy and taking traffic. Now DRAIN the old replica(s) before killing them:
+# disconnect each from the `proxy` network so Traefik deregisters it (stops routing NEW requests
+# to it) while the new replica keeps serving, pause for any in-flight request to finish, THEN
+# stop + remove. Without this deregister-first step a request can land on the old replica in the
+# very instant it's removed and hang until it times out — the one residual gap after start-first.
+echo "→ new replica healthy; draining old container(s) out of Traefik…"
+for id in $before; do
+  docker network disconnect "$PROXY_NET" "$id" >/dev/null 2>&1 || true
+done
+sleep "${ROLLOUT_DRAIN:-3}"   # let Traefik deregister + in-flight requests settle
+echo "→ removing old container(s)…"
 for id in $before; do
   docker stop "$id" >/dev/null 2>&1 || true
   docker rm   "$id" >/dev/null 2>&1 || true
