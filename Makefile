@@ -44,21 +44,19 @@ pull:
 PROD := docker compose -f compose.prod.yaml
 
 # Deploy the current checkout — run ON THE BOX (release/deploy.sh git-pulls, then runs this
-# over SSH). Pull new images, then roll the stack with ZERO DOWNTIME for the public `web`
-# service: postgres/data-plane reconcile in place, then deploy/rollout.sh brings up the new
-# `web` alongside the old and only drains the old once the new one is healthy (Traefik
-# health-gates routing), so forge-os.mardash.ai never loses its backend. The image pull is
-# NON-FATAL: on the Docker-Desktop box the credential keychain can't be read over SSH, so a
-# pull may fail — the deploy then proceeds with the already-cached images. To land BRAND-NEW
+# over SSH). Zero-downtime is now a PLATFORM capability — `forge deploy` (C7): it reconciles
+# postgres/data-plane in place, then rolls the public `web` service START-FIRST (new replica up
+# and healthy, drained out of Traefik, before the old is removed), so forge-os.mardash.ai never
+# loses its backend. We start the Forge control plane transiently to run it; it rolls the LOCAL
+# prod stack over the Docker socket (no separate rollout script). Image pulls are non-fatal (the
+# Docker-Desktop keychain can't be read over SSH — cached images still deploy); to land brand-new
 # images, unlock the keychain + pull interactively first (see DEPLOY.md).
 deploy:
-	$(PROD) pull || echo "  ⚠ image pull skipped (Docker Desktop keychain locked over SSH) — deploying cached images. To update images: unlock-keychain + '$(PROD) pull' interactively, then re-deploy."
-	$(PROD) up -d --no-deps postgres
-	bash deploy/rollout.sh
-	$(PROD) up -d --no-deps data-plane
+	$(MAKE) up          # ensure the control plane is running (idempotent; pulls control-plane image if missing)
+	./forge deploy --app forge-os --proxy-net proxy
 	@$(PROD) ps
 	@echo ""
-	@echo "Deployed forge-os (zero-downtime web roll).  Public:  https://forge-os.mardash.ai/api/health"
+	@echo "Deployed forge-os (zero-downtime roll via forge deploy).  Public:  https://forge-os.mardash.ai/api/health"
 	@echo "On the box:  make deploy-ps  /  make deploy-logs"
 
 deploy-ps:

@@ -1,7 +1,9 @@
 # Deploying forge-os
 
-Production is **three containers** behind the shared **proxygen / Traefik** proxy, served at
-**https://forge-os.mardash.ai** — no control plane, no `./forge`, no build tooling:
+Production is **three runtime containers** behind the shared **proxygen / Traefik** proxy, served at
+**https://forge-os.mardash.ai**. The app runtime carries no control plane and no build tooling;
+**deploys** start a Forge control plane *transiently* to run `forge deploy` (the C7 Deploy
+capability), which rolls the stack over the Docker socket — then it's idle again:
 
 ```
                      Traefik (proxy network, TLS)
@@ -14,10 +16,12 @@ data-plane (Forge sidecar)            scheduler (C2) + secrets store (C5), slim 
 ```
 
 This is the **data-plane** half of the split — see the diagrams in the Forge repo
-(`docs/diagrams/`). Build/test/lint and the `./forge` CLI are dev-only and **absent** here.
+(`docs/diagrams/`). Build/test/lint never run here; the control plane is used only to *orchestrate*
+the deploy (the start-first roll), never to build.
 
 > **You don't build on the host.** CI builds and publishes the images; the box just pulls and runs
-> them. The box's git checkout only provides the manifests (`compose.prod.yaml`, `deploy/`) + `.env`.
+> them. The box's git checkout provides the manifests (`compose.prod.yaml`, `deploy/`) + `.env`, and
+> the control-plane image runs the deploy.
 
 ## Deploy in one command (from your laptop)
 
@@ -65,6 +69,7 @@ multi-arch (`amd64` + `arm64`).
    ```bash
    APP_IMAGE=ghcr.io/mardash-ai/forge-os-app@sha256:<digest>            # R1: pin, don't track :latest
    FORGE_DATA_PLANE_IMAGE=ghcr.io/mardash-ai/forge-data-plane@sha256:<digest>
+   FORGE_IMAGE=ghcr.io/mardash-ai/forge-control-plane:0.6.1@sha256:<digest>  # `make deploy` starts it to run `forge deploy`
    POSTGRES_PASSWORD=<a real password>
    ANTHROPIC_API_KEY=<your key, or empty>
    FORGE_SECRETS_KEY=<a strong, STABLE value — see notes>
@@ -79,7 +84,9 @@ multi-arch (`amd64` + `arm64`).
 > deploys the **already-cached** images, so config/code changes ship hands-free. To land a **new
 > image**, unlock + pull once interactively: `./release/box-shell.sh`, then
 > `security -v unlock-keychain ~/Library/Keychains/login.keychain-db` and
-> `docker compose -f compose.prod.yaml pull`, then re-deploy.
+> `docker compose -f compose.prod.yaml pull`, then re-deploy. The **control-plane image**
+> (`FORGE_IMAGE`, started by `make deploy` → `make up` to run `forge deploy`) has the same gotcha —
+> pull it once the same way (`docker compose pull` in the repo root) so `make up` finds it cached.
 
 ## `make deploy` (what runs on the box)
 
@@ -87,32 +94,34 @@ multi-arch (`amd64` + `arm64`).
 
 | Command | What it does |
 |---|---|
-| `make deploy` | pull images (**non-fatal** — see keychain note) → reconcile `postgres` → **zero-downtime roll of `web`** ([`deploy/rollout.sh`](deploy/rollout.sh)) → reconcile `data-plane` → `ps`. `release/deploy.sh` runs `git pull --ff-only` first, so this deploys the current checkout. |
+| `make deploy` | start the control plane (idempotent) → **`forge deploy`** (C7): reconcile `postgres`/`data-plane` in place, then a **zero-downtime start-first roll of `web`** → `ps`. `release/deploy.sh` runs `git pull --ff-only` first, so this deploys the current checkout. |
 | `make deploy-ps` | container status |
 | `make deploy-logs` | tail all logs |
 | `make deploy-config` | validate `compose.prod.yaml` + `.env` (no changes) |
 | `make deploy-down` | stop the stack, **keep** the data volumes |
 
-## Zero-downtime deploys
+## Zero-downtime deploys — the Forge `Deploy` capability (C7)
 
-`web` is rolled **start-first** so `forge-os.mardash.ai` never loses its backend. A plain
-`docker compose up -d` recreates a single-replica service *stop-first* (stop old → start new), and
-during that gap Traefik has no healthy backend → a few seconds of 502s. Instead [`deploy/rollout.sh`](deploy/rollout.sh):
+Zero-downtime is a **platform capability** now, not a script in this repo. `forge deploy` rolls the
+public `web` service **start-first** so `forge-os.mardash.ai` never loses its backend (a plain
+`docker compose up -d` recreates a single replica *stop-first*, leaving Traefik with no backend for
+a few seconds → 502s). It:
 
-1. brings up a **second `web`** on the new image alongside the old (both join `proxy`, so Traefik
+1. reconciles the non-public services (`postgres`, `data-plane`) in place;
+2. brings up a **second `web`** on the new image alongside the old (both join `proxy`, so Traefik
    load-balances across them — and, via the `loadbalancer.healthcheck` labels in
    [`compose.prod.yaml`](compose.prod.yaml), only routes to a replica once it passes `/api/health`);
-2. waits until the new replica is **healthy** (Docker healthcheck);
-3. drains + removes the old replica (SIGTERM, up to `stop_grace_period: 15s`).
+3. waits until the new replica is **healthy**, then drains it out of `proxy` and removes it
+   (SIGTERM, up to `stop_grace_period: 15s`).
 
-There is always ≥1 healthy backend, so no request 502s. If the new replica never becomes healthy
-the old one is left serving and the deploy **fails loudly** — an automatic, safe rollback. Only
-`web` is rolled; `postgres` reconciles in place (a schema/image change there is a separate, rare
-concern), and the `data-plane` sidecar isn't public-facing.
+There is always ≥1 healthy backend, so no request 502s. If the new replica never becomes healthy it
+is discarded and the old one keeps serving — an automatic, safe rollback (a `DeploymentRolledBack`
+fact). Each roll is recorded as a `Deployment` resource; see it with `./forge inspect events`.
 
 > Verify a roll had zero downtime: run a probe against the public URL *during* a deploy —
 > `while :; do curl -sf -o /dev/null https://forge-os.mardash.ai/api/health && printf . || printf X; sleep 0.2; done`
-> — every mark should be a `.` (success); an `X` is a dropped request.
+> — every mark should be a `.` (success); an `X` is a dropped request. (This is exactly how the
+> capability was proven — 0 dropped requests across the roll.)
 
 ## Rollback
 
