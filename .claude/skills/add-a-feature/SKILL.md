@@ -28,7 +28,8 @@ This skill owns the **authoring workflow**. It leans on two others:
 3. Build       → write files under ./app following the conventions below
 4. Validate    → ./forge lint / build / test   (Docker), self-heal via ./forge explain
 5. Verify      → drive the real flow: dev server + exercise it (API calls, restart, screenshots)
-6. Done        → lint/build/test green AND every acceptance criterion observably holds
+6. Record      → update PLATFORM_CAPABILITIES.md with the platform pressure this feature created
+7. Done        → lint/build/test green AND every acceptance criterion observably holds
 ```
 
 A good spec is small but **unambiguous about "done"** — the acceptance criteria *are* the
@@ -173,11 +174,27 @@ curl --retry 20 --retry-all-errors -sf http://localhost:3000/api/health   # wait
   *internally* (`postgres:5432`), so remap only the **host** port in `app/compose.yaml`
   (e.g. `5433:5432`) — don't stop the other project's database.
 
-## 6. Done
+## 6. Record the platform pressure
+
+forge-os is the **wind tunnel for Forge** (see `CLAUDE.md`), so a feature isn't done until the
+pressure it put on the platform is captured. Update **`PLATFORM_CAPABILITIES.md`**: ask *what
+generic machinery did I just build inside `./app`?* Then —
+
+- new platform-shaped code (an event log, a scheduler shim, model wiring, a secrets hack, a
+  notifications store) → add or update a 🟡 row, **citing the files**, so the extraction is real;
+- hit a wall Forge can't do → a 🔴 row;
+- consumed a Forge capability that now exists → move it to 🟢 and thin the local code.
+
+Keep domain logic (the app's own resources and rules) out of the ledger — only generic,
+shareable machinery earns a row. A feature that added **no** platform pressure is a signal it may
+be pure app surface rather than a wind-tunnel feature — say so.
+
+## 7. Done
 
 Report success only when lint/build/test are green **and** you've observed every acceptance
 criterion holding in the running app. Note the `build_…`/`test_…`/`check_…` ids. Commit the
-spec (`specs/<feature-slug>/`) alongside the code under `./app/`.
+spec (`specs/<feature-slug>/`) and the `PLATFORM_CAPABILITIES.md` update alongside the code under
+`./app/`.
 
 ---
 

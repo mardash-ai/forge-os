@@ -17,10 +17,14 @@ it should. That mirrors how durable platforms actually grew:
 - Stripe built many internal platform capabilities to support real products.
 
 So when you choose and shape features, prefer the one that puts **real pressure** on the
-platform, and name the Forge capability each feature forces into existence (the `PROJECT_IDEA.md`
-roadmap tracks this — e.g. AI → the Agent framework, reminders → background jobs). A feature
-that exercises a genuine gap is worth more than one that just adds surface. The app should
+platform, and name the Forge capability each feature forces into existence. A feature that
+exercises a genuine gap is worth more than one that just adds surface. The app should
 continuously pressure Forge to become a better platform.
+
+**Track that pressure in [`PLATFORM_CAPABILITIES.md`](PLATFORM_CAPABILITIES.md)** — the ledger of
+platform capabilities forge-os needs that should be built *in Forge* and shared, plus what
+refactors out of `./app` once they exist. Every feature updates it (step 6 of the `add-a-feature`
+skill). `PROJECT_IDEA.md` tracks the *features*; this tracks the *platform debt* they create.
 
 ## The one rule
 
