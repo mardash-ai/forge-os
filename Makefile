@@ -1,7 +1,8 @@
 # Forge starter — convenience commands. These ONLY delegate to Docker.
 # No local Node, npm, or build tools are assumed.
 
-.PHONY: up down logs shell ps restart pull new-app
+.PHONY: up down logs shell ps restart pull new-app \
+        deploy deploy-ps deploy-logs deploy-config deploy-down
 
 up:
 	docker compose up -d
@@ -34,3 +35,34 @@ restart:
 # Refresh the platform image from the registry.
 pull:
 	docker compose pull
+
+# --- Production deployment (compose.prod.yaml) -----------------------------
+# Runs on the DEPLOY host — the app + Forge data-plane sidecar + Postgres, no
+# control plane. Pull-and-run (images are prebuilt by CI; nothing is built here).
+# Prereqs: Docker, `docker login ghcr.io`, and a configured .env (see
+# .env.prod.example and DEPLOY.md).
+PROD := docker compose -f compose.prod.yaml
+
+# One command to (re)deploy or update: pull the pinned images and roll the stack.
+# Unchanged services stay up; changed ones are recreated. Safe to re-run.
+deploy:
+	$(PROD) pull
+	$(PROD) up -d
+	@$(PROD) ps
+	@echo ""
+	@echo "Deployed. Verify:  curl -sf http://localhost:$${WEB_PORT:-3000}/api/health"
+
+deploy-ps:
+	$(PROD) ps
+
+deploy-logs:
+	$(PROD) logs -f
+
+# Validate compose.prod.yaml + the resolved .env without touching anything.
+deploy-config:
+	$(PROD) config
+
+# Stop the stack but KEEP the data volumes (postgres_data, forge_state).
+# (Never `down -v` in prod — that destroys the database.)
+deploy-down:
+	$(PROD) down
