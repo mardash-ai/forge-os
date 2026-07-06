@@ -13,8 +13,6 @@ services:
     environment:
       - HOST=0.0.0.0
       - PORT=3000
-      # Activates the Planner agent. Passed through from the host; empty when
-      # unset, in which case /api/goals/{id}/plan answers 503 (never crashes).
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
     depends_on:
       - postgres
@@ -36,8 +34,10 @@ services:
       - POSTGRES_USER=forge
       - POSTGRES_PASSWORD=forge
       - POSTGRES_DB=forge_os
-    # Host port remapped to avoid a conflict with another project already on 5432.
+    # Host port remapped to 5433 to avoid a conflict with another project on 5432.
     # The web service still reaches Postgres internally at postgres:5432 (unchanged).
+    # NOTE: `forge provision` regenerates this file and resets this to 5432 — re-apply
+    # the remap after any re-provision.
     ports:
       - "5433:5432"
     volumes:

@@ -20,10 +20,22 @@ new backwards-compatible features, **PATCH** for backwards-compatible fixes.
 
 ### Changed
 
-- C5 (Secrets) adoption attempted and **bounced to ⛔ blocked**: the delivered `0.2.0`
-  control-plane image ships `linux/amd64` only, but the dev host is `arm64`, so the control plane
-  can't run. Returned to the platform-builder for a multi-arch republish. No app change — the
-  existing secret-handling stopgap stays in place.
+- **Adopted Forge-managed secrets (capability C5).** `ANTHROPIC_API_KEY` is now stored in Forge's
+  encrypted vault and injected into the app container at `forge dev`, replacing the hand-wired
+  `app/.env` + compose plumbing. Pinned the control plane to
+  `forge-control-plane:0.2.0@sha256:924814d3…` (multi-arch) in the tracked root `compose.yaml`.
+  `isPlannerConfigured()` and the graceful 503-when-absent behavior are unchanged.
+
+### Removed
+
+- The `app/.env` secret file and the `ANTHROPIC_API_KEY` documentation in `app/.env.example` — the
+  key is no longer stored in the app; set it with `forge secrets set --app forge-os --name
+  ANTHROPIC_API_KEY`.
+
+### Fixed
+
+- C5 was briefly blocked because the delivered `0.2.0` image was `amd64`-only on an `arm64` host;
+  the platform-builder republished it multi-arch, unblocking adoption.
 
 ---
 
