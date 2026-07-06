@@ -85,7 +85,9 @@ services:
       - postgres_data:/var/lib/postgresql/data
     networks: [internal]
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U forge"]
+      # Must name the DB — user `forge` != db `forge_os`, so a bare `pg_isready -U forge`
+      # probes a nonexistent db "forge" and spams FATAL every interval (harmless but alarming).
+      test: ["CMD-SHELL", "pg_isready -U forge -d forge_os"]
       interval: 10s
       timeout: 5s
       retries: 5
