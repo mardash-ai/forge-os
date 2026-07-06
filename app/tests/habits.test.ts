@@ -1,6 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import {
   computeStreak,
+  endedPeriod,
+  finalizeStreak,
   isCadence,
   periodStart,
   previousPeriodStart,
@@ -110,6 +112,60 @@ describe('computeStreak — weekly', () => {
 
   it('resets when a week was skipped', () => {
     expect(computeStreak([prev2], 'weekly', now)).toMatchObject({ streak: 0, doneThisPeriod: false });
+  });
+});
+
+describe('endedPeriod', () => {
+  it('daily: the period that just closed is yesterday', () => {
+    expect(endedPeriod('2026-07-06T00:05:00Z', 'daily')).toBe('2026-07-05');
+  });
+
+  it('weekly: the closed period is last ISO week’s Monday', () => {
+    const cur = periodStart('2026-07-08', 'weekly');
+    expect(endedPeriod('2026-07-08T00:05:00Z', 'weekly')).toBe(previousPeriodStart(cur, 'weekly'));
+  });
+});
+
+describe('finalizeStreak — daily', () => {
+  const now = '2026-07-06T00:05:00Z'; // just after midnight; closed period = 2026-07-05
+
+  it('reports the closed period as completed when it was checked in (no break)', () => {
+    const r = finalizeStreak(['2026-07-05', '2026-07-04'], 'daily', now);
+    expect(r).toEqual({ period: '2026-07-05', completed: true, brokenStreak: 0 });
+  });
+
+  it('records the broken run length when the closed period was missed', () => {
+    // 07-05 missed; 07-04,07-03,07-02 completed → a 3-day run broke
+    const r = finalizeStreak(['2026-07-04', '2026-07-03', '2026-07-02'], 'daily', now);
+    expect(r).toEqual({ period: '2026-07-05', completed: false, brokenStreak: 3 });
+  });
+
+  it('missed with no prior run is not a break (brokenStreak 0)', () => {
+    const r = finalizeStreak([], 'daily', now);
+    expect(r).toEqual({ period: '2026-07-05', completed: false, brokenStreak: 0 });
+  });
+
+  it('a check-in on the still-open current period does not count toward the closed one', () => {
+    // only today (07-06) done; the closed period 07-05 is still a miss with no prior run
+    const r = finalizeStreak(['2026-07-06'], 'daily', now);
+    expect(r).toEqual({ period: '2026-07-05', completed: false, brokenStreak: 0 });
+  });
+});
+
+describe('finalizeStreak — weekly', () => {
+  const now = '2026-07-13T00:05:00Z'; // Monday; closed period = the prior ISO week
+  const closed = endedPeriod(now, 'weekly');
+  const before1 = previousPeriodStart(closed, 'weekly');
+  const before2 = previousPeriodStart(before1, 'weekly');
+
+  it('records a broken run of weeks when the closed week was missed', () => {
+    const r = finalizeStreak([before1, before2], 'weekly', now);
+    expect(r).toEqual({ period: closed, completed: false, brokenStreak: 2 });
+  });
+
+  it('no break when the closed week was completed', () => {
+    const r = finalizeStreak([closed, before1], 'weekly', now);
+    expect(r).toMatchObject({ period: closed, completed: true, brokenStreak: 0 });
   });
 });
 

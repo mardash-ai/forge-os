@@ -13,6 +13,13 @@ new backwards-compatible features, **PATCH** for backwards-compatible fixes.
 
 ### Added
 
+- **Adopted the Forge scheduler (capability C2).** A durable UTC-midnight job
+  (`POST /api/cron/habits-finalize`) now finalizes each habit's closed period and persists streak
+  breaks in a new `habit_streak_breaks` table — giving Habits a real period boundary instead of a
+  purely read-time reset. The job is idempotent (safe under the scheduler's retries) and the
+  read-time streak derivation is unchanged as the source of truth. Bumped the control plane to
+  `forge-control-plane:0.4.0@sha256:9d216618…` (multi-arch). The Reminders push job is deferred to
+  the Notifications capability (C4).
 - `CHANGELOG.md` (this file), following Keep a Changelog + Semantic Versioning. The `/commit-code`
   skill now maintains it automatically on every commit.
 - Write baton (single-writer lock) at the top of `PLATFORM_CAPABILITIES.md` — serializes edits to

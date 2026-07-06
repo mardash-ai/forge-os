@@ -100,6 +100,47 @@ export function computeStreak(
   return { streak, longestStreak, doneThisPeriod, currentPeriod };
 }
 
+/** The period that has just *closed* as of `now` — the one a boundary job finalizes.
+ *  (The current period is still open/pending; the previous one is settled.) */
+export function endedPeriod(nowISO: string, cadence: Cadence): string {
+  return previousPeriodStart(periodStart(dateOf(nowISO), cadence), cadence);
+}
+
+export interface Finalization {
+  period: string; // the closed period-start being finalized
+  completed: boolean; // was it checked in?
+  brokenStreak: number; // >0 iff a missed period ended a live run; the run's length
+}
+
+/**
+ * Settle the just-closed period for a habit — the work a scheduler does at each
+ * period boundary, which read-time derivation can't record after the fact.
+ *
+ * Reports whether the closed period was completed and, if it was *missed*, the
+ * length of the streak it broke (0 if there was no live run to break). This is
+ * pure; the DB layer persists a marker for a genuine break (`brokenStreak > 0`).
+ */
+export function finalizeStreak(
+  completedPeriods: Iterable<string>,
+  cadence: Cadence,
+  nowISO: string,
+): Finalization {
+  const set = new Set<string>();
+  for (const p of completedPeriods) set.add(periodStart(p, cadence));
+
+  const period = endedPeriod(nowISO, cadence);
+  if (set.has(period)) return { period, completed: true, brokenStreak: 0 };
+
+  // Missed: measure the run of consecutive completed periods that ended right before it.
+  let brokenStreak = 0;
+  let p = previousPeriodStart(period, cadence);
+  while (set.has(p)) {
+    brokenStreak++;
+    p = previousPeriodStart(p, cadence);
+  }
+  return { period, completed: false, brokenStreak };
+}
+
 export type HeatTier = 'cold' | 'warm' | 'hot' | 'bright' | 'whitehot';
 
 /** Maps a streak to a heat tier for the ember — saturates sooner for the slower weekly cadence. */

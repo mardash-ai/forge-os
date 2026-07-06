@@ -14,7 +14,7 @@ routed to Forge**, instead of being quietly absorbed as app-local code.
 > **forge-os agent** (builds features here and simplifies `./app` onto new capabilities). They
 > never talk directly — a **human relays** between them. Read *How this file works* before editing.
 
-> **✍️ Write baton — `Holder: forge-os`.** Only the named Holder may edit this file; the other
+> **✍️ Write baton — `Holder: platform-builder`.** Only the named Holder may edit this file; the other
 > agent waits for the human to pass the baton. This is the single-writer lock over the human relay
 > (the two agents live in separate repos, so this token — not git — is what serializes writes).
 > Rules:
@@ -254,7 +254,7 @@ never will.
 | Cap | Delivered in (CP image tag @ digest / commit) | App runtime change? | Adopted in (forge-os commit) | App pinned to |
 |---|---|---|---|---|
 | C1 | _TODO (platform-builder)_ | _TODO_ | _TODO (forge-os)_ | _TODO_ |
-| C2 | `0.4.0 @ sha256:9d216618…1a47` **multi-arch** (v0.4.0 / `42e5360`) | image bump + register jobs + add cron endpoint(s) | _TODO (forge-os)_ | _TODO_ |
+| C2 | `0.4.0 @ sha256:9d216618…1a47` **multi-arch** (v0.4.0 / `42e5360`) | image bump + register jobs + add cron endpoint(s) | _(this commit)_ | `0.4.0 @ sha256:9d216618…1a47` |
 | C3 | _TODO_ | _TODO_ | _TODO_ | _TODO_ |
 | C4 | _TODO_ | _TODO_ | _TODO_ | _TODO_ |
 | C5 | `0.2.0 @ sha256:924814d3…eb762` **multi-arch** (v0.2.0 / `5765c4a`) | image bump + re-provision (declare `--secret`) | `d2faf4d` | `0.3.0 @ sha256:8d0dea66…df05` (bumped via **P1**; ≥ 0.2.0, secrets unaffected) |
@@ -321,7 +321,7 @@ spec for the platform-builder; *Refactors OUT* is the forge-os plan; the *Platfo
 - **Adoption:** _TODO (forge-os)_
 
 ### C2 · Scheduler / background jobs — *(the hard blocker)*
-**Status:** 🟢 Ready for adoption · **Owner:** forge-os · **Plane:** data-plane (jobs execute in production with no user present)
+**Status:** ✅ Adopted · **Owner:** — · **Plane:** data-plane (jobs execute in production with no user present)
 
 - **Needed by:** Reminders (v2) to *push* alerts; **Habits (v4, shipped this iteration on the
   read-time stopgap)** for recurrence + streak resets.
@@ -410,7 +410,37 @@ spec for the platform-builder; *Refactors OUT* is the forge-os plan; the *Platfo
     affected. The control plane now runs an idle background ticker (no jobs → no work). Requires the
     `0.4.0` bump. Callbacks assume the app is reachable at `host.docker.internal:<web port>` (Docker
     Desktop / the arm64 dev host) — override `FORGE_APP_CALLBACK_HOST` elsewhere.
-- **Adoption:** _TODO (forge-os)_
+- **Adoption:** ✅ **Adopted.** Habits' streak reset now has a real period boundary: a durable
+  UTC-midnight job finalizes each closed period and **persists** streak breaks — the boundary record
+  read-time derivation could never produce. The pure `computeStreak` stays the source of truth; the
+  scheduler adds the *history of when* streaks broke.
+  - **Now runs on** — control plane
+    `ghcr.io/mardash-ai/forge-control-plane:0.4.0 @ sha256:9d216618…1a47` (multi-arch; `linux/arm64`
+    confirmed in the index before pinning), pinned in the **tracked** root `compose.yaml` default (no
+    `latest`, per R1). App base image unchanged (`node:22-bookworm-slim`).
+  - **Added (onto the capability)** — `POST /api/cron/habits-finalize` (idempotent boundary job);
+    pure `endedPeriod()` + `finalizeStreak()` in [app/lib/habits.ts](app/lib/habits.ts); the
+    `habit_streak_breaks` table + `finalizeHabitStreaks()` in [app/lib/db.ts](app/lib/db.ts) (records
+    one marker per missed period that ended a live run, `UNIQUE(habit_id, period)` for retry-safety).
+    Registered `forge schedule --name habits-finalize --cron "5 0 * * *"`.
+  - **Kept (domain / safety net)** — `computeStreak`/`listHabits` read-time derivation unchanged, per
+    *Detect absence / degrade*: with no job (or an older image) the app behaves exactly as before.
+    **Deferred to C4:** the Reminders *push* job — a `/api/cron/reminders` now would only recompute
+    already-derived state with nowhere to deliver it (that's the "C4 flips pull → push" half), so it
+    isn't built until the notification channel exists.
+  - **Verified** — `build_3177e1f8` / `check_01a7c706` (0 problems) / `test_135f606f` (**80/0**, +8
+    finalize tests) green. End-to-end: registered the job at `--every 30s`, ran `forge dev`, and the
+    scheduler fired the callback on cadence — `forge jobs` → `last_status:succeeded`, `runs:3`;
+    `forge inspect events` → `JobScheduled` → `JobRunFailed` → `JobRan`×N (the one failure was a fire
+    during a stale-`.next` window, and its recovery on the next tick proved the delivery's
+    retry/record behavior). Re-registered at `--cron "5 0 * * *"` → `next_run_at` = next UTC `00:05`,
+    confirming cron parsing. Idempotency: repeated fires returned `{recorded:0}` with no error or
+    duplicate rows. Break-recording correctness is covered by the pure `finalizeStreak` unit tests
+    (fabricating historical check-ins isn't possible through the API, which only checks in *now*).
+  - **Metrics** — `lib/db.ts` **588 → 656** (+68): C2 is *additive* (a table + one finalize query),
+    so it grows db.ts rather than shrinking it. The shrink metric belongs to C1/C3/C4, which extract
+    existing tables; C2's win is moving derivation *timing* to a durable boundary, not removing code.
+  - **Adopted in** — see the *Runtime & version* table (C2) and the Handoff log.
 
 ### C3 · Application event log / Timeline
 **Status:** 🟡 Local stopgap · **Owner:** platform-builder · **Plane:** data-plane (app emits/queries at runtime; the control-plane `inspect events` is an observability surface over the same store)
@@ -684,6 +714,7 @@ Append one line per state change (newest last). `by` = role; `ref` = commit / PR
 | P1 | → ✅ verified | forge-os | `0.3.0@sha256:8d0dea66…df05` | bumped control plane `0.2.0 → 0.3.0` (arm64 in the index confirmed first). Flag-less re-provision persisted `infra` to `forge.app.json` (postgres + `ANTHROPIC_API_KEY` + `5433` remap recovered, nothing dropped). Footgun gone: `--secret`-only provision keeps Postgres; `--without-postgres` refused **422** without `--force`. Updated the provision-app skill (forge-os + starter) to the convergent behavior. Baton → platform-builder (next per sequence: **C2 Scheduler**). |
 | — | requirement R3 | forge-os | `ac48e76` | added **R3 · classify every capability by plane** (control-plane / data-plane / both) + a `Plane` field on each row and in the delivery template; classified C1–C4 + C6 as data-plane, C5 as both, provisioning/build/test (+ P1) as control-plane. Under a one-turn baton grant from the human; baton stays with **platform-builder** (C2 + declare `Plane` on delivery going forward). |
 | C2 | → 🟢 ready | platform-builder | `0.4.0@sha256:9d216618…1a47` | Scheduler delivered (**data-plane**, R3): durable recurring (interval + UTC cron) / one-shot jobs, HTTP callback into the app, retry-with-backoff + resume-on-restart, observable via `inspect jobs` + `JobRan`/`JobRunFailed` facts. Habits' streak reset + Reminders' push can now move off read-time derivation. Baton → forge-os. |
+| C2 | → ✅ adopted | forge-os | `_(this commit)_` | bumped to `0.4.0` (arm64 in index confirmed). Added idempotent UTC-midnight `POST /api/cron/habits-finalize` that persists `habit_streak_breaks` at the period boundary; pure `finalizeStreak` + 8 tests; kept read-time `computeStreak` as the source-of-truth safety net. Verified the scheduler fires on cadence (`runs:3` succeeded, `JobRan` facts, cron `next_run_at`=next UTC 00:05). Reminders push **deferred to C4** (no channel yet). `lib/db.ts` 588→656 (C2 is additive). Baton → platform-builder (next per sequence: **C3 Event log**). |
 
 ---
 

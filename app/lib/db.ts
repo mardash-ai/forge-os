@@ -7,7 +7,7 @@ import type { Goal, GoalStatus, GoalWithProgress, GoalWithTasks, Task } from './
 import { progressPercent } from './goals';
 import type { EventData, EventType, TimelineEvent } from './timeline';
 import { bucketFor } from './schedule';
-import { computeStreak, dateOf, periodStart, type Cadence, type StreakInfo } from './habits';
+import { computeStreak, dateOf, finalizeStreak, periodStart, type Cadence, type StreakInfo } from './habits';
 import {
   COLD_THRESHOLD_DAYS,
   activeNotifications,
@@ -105,6 +105,18 @@ function ensureSchema(): Promise<void> {
         UNIQUE (habit_id, period)
       );
       CREATE INDEX IF NOT EXISTS habit_checkins_habit_id_idx ON habit_checkins (habit_id);
+      -- Streak breaks recorded by the C2 scheduler at each period boundary. A row
+      -- exists only for a period that was MISSED and ended a live run (streak > 0).
+      -- UNIQUE (habit_id, period) makes the finalize job idempotent under retries.
+      CREATE TABLE IF NOT EXISTS habit_streak_breaks (
+        id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+        habit_id uuid NOT NULL REFERENCES habits(id) ON DELETE CASCADE,
+        period date NOT NULL,
+        streak int NOT NULL,
+        created_at timestamptz NOT NULL DEFAULT now(),
+        UNIQUE (habit_id, period)
+      );
+      CREATE INDEX IF NOT EXISTS habit_streak_breaks_habit_id_idx ON habit_streak_breaks (habit_id);
     `)
     .then(() => undefined)
     .catch((err: unknown) => {
@@ -585,4 +597,60 @@ export async function deleteHabit(id: string): Promise<boolean> {
   if (!isUuid(id)) return false;
   const rows = await query<{ id: string }>(`DELETE FROM habits WHERE id = $1 RETURNING id`, [id]);
   return rows.length > 0;
+}
+
+/** A streak break recorded at a period boundary by the finalize job. */
+export interface StreakBreak {
+  habitId: string;
+  title: string;
+  cadence: Cadence;
+  period: string; // the missed period-start that ended the run
+  streak: number; // the length of the run it broke
+}
+
+/**
+ * Settle the period that just closed for every habit — the C2 scheduler's boundary
+ * job. For each habit whose closed period was *missed* and ended a live streak, it
+ * records one durable `habit_streak_breaks` marker (idempotent) and returns the
+ * breaks newly recorded on this run. Completed or no-streak periods write nothing.
+ *
+ * Idempotent: safe to call repeatedly (scheduler retries, double fires) — the
+ * UNIQUE(habit_id, period) constraint means a re-run records nothing new. Read-time
+ * `computeStreak` remains the source of truth for the live streak; this only adds
+ * the persisted history of *when* streaks broke.
+ */
+export async function finalizeHabitStreaks(now: Date): Promise<StreakBreak[]> {
+  const habitRows = await query<HabitRow>(
+    `SELECT id, title, cadence, created_at FROM habits ORDER BY created_at ASC`,
+  );
+  if (habitRows.length === 0) return [];
+  const checkins = await query<{ habit_id: string; period: string }>(
+    `SELECT habit_id, period::text AS period FROM habit_checkins`,
+  );
+  const byHabit = new Map<string, string[]>();
+  for (const c of checkins) {
+    const list = byHabit.get(c.habit_id);
+    if (list) list.push(c.period);
+    else byHabit.set(c.habit_id, [c.period]);
+  }
+
+  const nowISO = now.toISOString();
+  const recorded: StreakBreak[] = [];
+  for (const row of habitRows) {
+    const habit = mapHabit(row);
+    const { period, brokenStreak } = finalizeStreak(byHabit.get(row.id) ?? [], habit.cadence, nowISO);
+    // Only a missed period that ended a live run is worth persisting.
+    if (brokenStreak <= 0) continue;
+    // Don't finalize periods before the habit existed.
+    if (period < periodStart(dateOf(habit.createdAt), habit.cadence)) continue;
+    const ins = await query<{ id: string }>(
+      `INSERT INTO habit_streak_breaks (habit_id, period, streak) VALUES ($1, $2, $3)
+       ON CONFLICT (habit_id, period) DO NOTHING RETURNING id`,
+      [row.id, period, brokenStreak],
+    );
+    if (ins.length > 0) {
+      recorded.push({ habitId: habit.id, title: habit.title, cadence: habit.cadence, period, streak: brokenStreak });
+    }
+  }
+  return recorded;
 }
