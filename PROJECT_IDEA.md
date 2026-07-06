@@ -157,6 +157,18 @@ reads as *heat* (cold when untouched, glowing as it nears done).
 
 *Spec + design live in `specs/goals-and-tasks/{FEATURE,DESIGN}.md`.*
 
+**v2 · The Events → time → background-jobs spine.** Three features that build on the core,
+each shipped green (lint/build/test) and verified end-to-end:
+
+-   **Timeline** *(`specs/timeline/`)* — the app emits its own **Events** at every mutation;
+    `/timeline` shows them as heat-coded sparks. *Realized the Event backbone.*
+-   **Time & Today** *(`specs/time-and-today/`)* — task **due dates** + a `/today` board
+    bucketed Overdue / Today / This week / Later. *Made time first-class (the Schedule need).*
+-   **Reminders** *(`specs/reminders/`)* — a `/notifications` inbox deriving **overdue** tasks
+    and **cold goals** (via the Event log), with dismiss + a nav badge. *Exposed the real
+    platform gap: everything is read-time — Forge still needs a **scheduler / background jobs**
+    to push these while you're away.*
+
 ## 🔜 Proposed next — pick a set to spec
 
 Each candidate is a small, coherent feature that builds on Goals & Tasks **and** forces a
@@ -171,7 +183,7 @@ accept before they're added.
 -   *Why now:* the clearest single jump in platform capability, and it directly satisfies the
     "naturally exercise AI agents" design constraint.
 
-**2 · Timeline — your life as Events** *(mirrors Forge's own model)*
+**2 · Timeline — your life as Events** — ✅ **SHIPPED (v2)** *(mirrors Forge's own model)*
 A chronological feed of what happened: Goal created, Task completed, status changed. The app
 emits its **own Events**, exactly as Forge does internally.
 -   *Pressures Forge →* **Observability / platform telemetry**; introduces the **Timeline
@@ -179,13 +191,13 @@ emits its **own Events**, exactly as Forge does internally.
     reminders later read from.
 -   *Why now:* mostly self-contained and buildable today; lays the Event foundation.
 
-**3 · Time & Today — due dates + a focus view**
+**3 · Time & Today — due dates + a focus view** — ✅ **SHIPPED (v2)**
 Give Tasks (and Goals) dates, plus a "Today / This Week / Overdue" view that answers *what
 now?*
 -   *Pressures Forge →* the **Schedule** capability; makes time first-class — the precursor
     to reminders.
 
-**4 · Reminders & Notifications** *(deepest platform pressure)*
+**4 · Reminders & Notifications** — ✅ **SHIPPED (v2)** *(deepest platform pressure)*
 Surface due / overdue tasks and goals gone "cold" as notifications.
 -   *Pressures Forge →* **Notifications → Events** and, critically, **background jobs →
     workflow composition** — Forge needs a way to run recurring work. Introduces the
@@ -201,6 +213,10 @@ A Project groups Goals; its view rolls up progress across them.
 -   *Pressures Forge →* hierarchy / organization (lighter platform pressure). Introduces the
     **Project** resource. Good if you want breadth before depth.
 
-**Recommended:** either lead with **#1 Planner Agent** (biggest capability jump, the first
-AI / agent) — or build the **#2 → #3 → #4** spine (Events → time → background jobs), which
-pressures three real platform gaps in a natural order.
+**Still open:** **#1 Planner Agent**, **#5 Habits**, **#6 Projects**.
+
+**Recommended next:** **#1 Planner Agent** — with the Events / time / background-jobs spine now
+shipped (#2–#4), the biggest remaining capability jump is the first **AI agent**, which
+directly satisfies the "naturally exercise AI agents" constraint and introduces the Agent Task
++ Artifact resources. (Or #5 Habits, which cashes in the same background-jobs pressure #4 just
+exposed.)
