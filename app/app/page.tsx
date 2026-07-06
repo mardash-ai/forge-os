@@ -3,6 +3,7 @@ import type { GoalWithProgress } from '@/lib/goals';
 import { listGoals } from '@/lib/db';
 import { HeatBar } from '@/app/components/HeatBar';
 import { NewGoal } from '@/app/components/NewGoal';
+import { SiteNav } from '@/app/components/SiteNav';
 
 export const dynamic = 'force-dynamic';
 
@@ -21,16 +22,17 @@ export default async function HomePage() {
         <span className="wordmark">
           Forge<b>·</b>OS
         </span>
-        <span className="status-line">
-          <span className="hot">{active.length} on the anvil</span> · {forged.length} forged ·{' '}
-          {coldCount} cold
-        </span>
+        <SiteNav current="floor" />
       </header>
 
       <div className="floor-head">
         <div className="head-text">
           <p className="eyebrow">The forge floor</p>
           <h1>What&apos;s hot right now</h1>
+          <p className="floor-status">
+            <span className="hot">{active.length} on the anvil</span> · {forged.length} forged ·{' '}
+            {coldCount} cold
+          </p>
         </div>
         <div className="head-actions">
           <NewGoal />

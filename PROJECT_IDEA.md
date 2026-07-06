@@ -81,9 +81,9 @@ Events
 
 ### Resources
 
--   Goal
+-   Goal ✅ *(shipped in v1)*
 -   Project
--   Task
+-   Task ✅ *(shipped in v1)*
 -   Document
 -   Meeting
 -   Contact
@@ -136,3 +136,71 @@ Every feature naturally requires Forge capabilities:
 -   Observability → Platform telemetry
 
 Nothing feels artificial.
+
+------------------------------------------------------------------------
+
+# Status & Roadmap
+
+## ✅ Done — shipped
+
+**v1 · Goals & Tasks — the core.** The Goal-centric spine of forge-os is live and
+persisted in Postgres, with the design-first "forge floor" UI where each Goal's progress
+reads as *heat* (cold when untouched, glowing as it nears done).
+
+-   **Resources shipped:** **Goal** (title, description, status, derived progress) and
+    **Task** (title, done, belongs to a Goal).
+-   **What a user can do:** create / list / view Goals; move a Goal through its lifecycle
+    (Active → Achieved → Archived); break a Goal into Tasks; complete Tasks; watch progress
+    derived live from a Goal's tasks. Data survives restarts.
+-   **Not yet built:** any Capability (Plan, Schedule, Notify, Search, …), any Agent,
+    notifications, search, auth, or multi-user — those are the backlog below.
+
+*Spec + design live in `specs/goals-and-tasks/{FEATURE,DESIGN}.md`.*
+
+## 🔜 Proposed next — pick a set to spec
+
+Each candidate is a small, coherent feature that builds on Goals & Tasks **and** forces a
+specific Forge capability into existence — that's the wind-tunnel point (see *The Litmus
+Test*). Ordered roughly by how hard they press on the platform.
+
+**1 · Planner Agent — AI drafts the tasks** *(the first agent)*
+From a Goal's title + description, generate a proposed list of Tasks you review, edit, and
+accept before they're added.
+-   *Pressures Forge →* the **Agent framework** + a **Plan / Generate** capability + AI
+    (Claude API). Introduces the **Agent Task** and **Artifact** resources.
+-   *Why now:* the clearest single jump in platform capability, and it directly satisfies the
+    "naturally exercise AI agents" design constraint.
+
+**2 · Timeline — your life as Events** *(mirrors Forge's own model)*
+A chronological feed of what happened: Goal created, Task completed, status changed. The app
+emits its **own Events**, exactly as Forge does internally.
+-   *Pressures Forge →* **Observability / platform telemetry**; introduces the **Timeline
+    Event** resource. Elegant fit — the domain mirrors the platform — and it's the backbone
+    reminders later read from.
+-   *Why now:* mostly self-contained and buildable today; lays the Event foundation.
+
+**3 · Time & Today — due dates + a focus view**
+Give Tasks (and Goals) dates, plus a "Today / This Week / Overdue" view that answers *what
+now?*
+-   *Pressures Forge →* the **Schedule** capability; makes time first-class — the precursor
+    to reminders.
+
+**4 · Reminders & Notifications** *(deepest platform pressure)*
+Surface due / overdue tasks and goals gone "cold" as notifications.
+-   *Pressures Forge →* **Notifications → Events** and, critically, **background jobs →
+    workflow composition** — Forge needs a way to run recurring work. Introduces the
+    **Notification** resource. *(Builds on #3 dates and #2 events.)*
+
+**5 · Habits — recurring goals with streaks**
+Habits that recur daily / weekly, reset on cadence, and track a streak.
+-   *Pressures Forge →* **Schedule + background jobs** (the reset) and **Events**
+    (check-ins). Introduces the **Habit** resource and recurrence.
+
+**6 · Projects — group related Goals**
+A Project groups Goals; its view rolls up progress across them.
+-   *Pressures Forge →* hierarchy / organization (lighter platform pressure). Introduces the
+    **Project** resource. Good if you want breadth before depth.
+
+**Recommended:** either lead with **#1 Planner Agent** (biggest capability jump, the first
+AI / agent) — or build the **#2 → #3 → #4** spine (Events → time → background jobs), which
+pressures three real platform gaps in a natural order.
