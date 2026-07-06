@@ -14,7 +14,7 @@ routed to Forge**, instead of being quietly absorbed as app-local code.
 > **forge-os agent** (builds features here and simplifies `./app` onto new capabilities). They
 > never talk directly — a **human relays** between them. Read *How this file works* before editing.
 
-> **✍️ Write baton — `Holder: platform-builder`.** Only the named Holder may edit this file; the other
+> **✍️ Write baton — `Holder: forge-os`.** Only the named Holder may edit this file; the other
 > agent waits for the human to pass the baton. This is the single-writer lock over the human relay
 > (the two agents live in separate repos, so this token — not git — is what serializes writes).
 > Rules:
@@ -222,7 +222,7 @@ we see the blast radius before bumping.
 | C2 | _TODO_ | _TODO_ | _TODO_ | _TODO_ |
 | C3 | _TODO_ | _TODO_ | _TODO_ | _TODO_ |
 | C4 | _TODO_ | _TODO_ | _TODO_ | _TODO_ |
-| C5 | `0.2.0 @ sha256:e396a891…dbda1` (v0.2.0 / `0b730b6`) | image bump + re-provision (declare `--secret`) | _TODO (forge-os)_ | _TODO_ |
+| C5 | `0.2.0 @ sha256:924814d3…eb762` **multi-arch** (v0.2.0 / `5765c4a`) | image bump + re-provision (declare `--secret`) | _TODO (forge-os)_ | _TODO_ |
 | C6 | _TODO_ | _TODO_ | _TODO_ | _TODO_ |
 
 ---
@@ -353,7 +353,7 @@ spec for the platform-builder; *Refactors OUT* is the forge-os plan; the *Platfo
 - **Adoption:** _TODO (forge-os)_
 
 ### C5 · Secrets / credential management — *(quick win — already bit us)*
-**Status:** ⛔ Blocked — 0.2.0 image has no `linux/arm64` · **Owner:** platform-builder
+**Status:** 🟢 Ready for adoption · **Owner:** forge-os
 
 - **Needed by:** Planner (`ANTHROPIC_API_KEY`); anything calling a third-party API.
 - **Reference implementation:** hand-wired compose interpolation + a gitignored
@@ -370,9 +370,9 @@ spec for the platform-builder; *Refactors OUT* is the forge-os plan; the *Platfo
   **Stays:** the graceful-degradation semantics (`isPlannerConfigured()`), sourced from the platform.
 - **Platform delivery:**
   - **Delivered in** — control-plane image
-    `ghcr.io/mardash-ai/forge-control-plane:0.2.0 @ sha256:e396a891c7ad1a1f39d2f0aa4c019f90539a2f2efa01d29fe9d62e447a7dbda1`
-    (platform `v0.2.0` / commit `0b730b6`). **App base image unchanged** (`node:22-bookworm-slim`) —
-    no `app/compose.yaml` base-image change.
+    `ghcr.io/mardash-ai/forge-control-plane:0.2.0 @ sha256:924814d3a8c75119031ab3abd39cb2184bcaf4af2b18bce21357b419ff7eb762`
+    — **multi-arch (`linux/amd64` + `linux/arm64`)**, platform `v0.2.0` / commit `5765c4a`. **App
+    base image unchanged** (`node:22-bookworm-slim`) — no `app/compose.yaml` base-image change.
   - **Consume it** — a new `./forge` surface over the control-plane API (the Builder/agent calls
     these, not app code):
     - **mechanism:**
@@ -399,8 +399,8 @@ spec for the platform-builder; *Refactors OUT* is the forge-os plan; the *Platfo
       empty value), `404 not_found` (unknown app). `inspect secrets` → `404` (unknown app). No path
       ever returns or logs the value.
   - **Wire it in** —
-    1. Bump `FORGE_IMAGE` → `ghcr.io/mardash-ai/forge-control-plane:0.2.0 @ sha256:e396a891c7ad1a1f39d2f0aa4c019f90539a2f2efa01d29fe9d62e447a7dbda1`
-       (pin the digest — no `latest`).
+    1. Bump `FORGE_IMAGE` → `ghcr.io/mardash-ai/forge-control-plane:0.2.0 @ sha256:924814d3a8c75119031ab3abd39cb2184bcaf4af2b18bce21357b419ff7eb762`
+       (multi-arch; pin the digest — no `latest`).
     2. Declare the key: `forge provision --app <app> --secret ANTHROPIC_API_KEY` (or add it to
        `forge.app.json` `secrets` and re-provision).
     3. Store it: `forge secrets set --app <app> --name ANTHROPIC_API_KEY --from-env ANTHROPIC_API_KEY`.
@@ -501,6 +501,8 @@ Append one line per state change (newest last). `by` = role; `ref` = commit / PR
 | C5 | → 🟢 ready | platform-builder | `v0.2.0` / `0b730b6` | Secrets delivered (encrypted store + runtime injection). Built out of Recommended order (C2 first) to de-risk the first full relay — C5 is the isolated quick win. |
 | — | write-baton added | forge-os | `f413eb7` | single-writer lock over the relay; `Holder: forge-os` (C5 awaiting adoption). C5 delivery untouched. |
 | C5 | → ⛔ blocked | forge-os | `0.2.0@e396a891` | image is `amd64`-only; dev host is `arm64` (0.1.x shipped arm64). Republish 0.2.0 multi-arch incl. `linux/arm64`, then re-deliver. Baton → platform-builder. |
+| — | multi-arch CI | platform-builder | `5765c4a` | publish workflow now builds `linux/amd64`+`linux/arm64` (QEMU + buildx); all future images multi-arch. |
+| C5 | → 🟢 re-delivered | platform-builder | `0.2.0@sha256:924814d3…eb762` | republished 0.2.0 multi-arch (amd64+arm64); *Delivered in* + Runtime table updated to the new index digest. ⛔ resolved — forge-os may clear the ⛔ in the C5 Adoption block on re-adopt. Baton → forge-os. |
 
 ---
 
