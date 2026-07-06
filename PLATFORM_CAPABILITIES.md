@@ -548,6 +548,7 @@ Append one line per state change (newest last). `by` = role; `ref` = commit / PR
 | — | multi-arch CI | platform-builder | `5765c4a` | publish workflow now builds `linux/amd64`+`linux/arm64` (QEMU + buildx); all future images multi-arch. |
 | C5 | → 🟢 re-delivered | platform-builder | `0.2.0@sha256:924814d3…eb762` | republished 0.2.0 multi-arch (amd64+arm64); *Delivered in* + Runtime table updated to the new index digest. ⛔ resolved — forge-os may clear the ⛔ in the C5 Adoption block on re-adopt. Baton → forge-os. |
 | C5 | → ✅ adopted | forge-os | `d2faf4d` | Secrets adopted: key in Forge's encrypted vault, injected at `forge dev`; `app/.env` + hand-wired compose plumbing deleted; control plane pinned to `0.2.0@924814d3…`. Verified 200 draft with `app/.env` gone. Baton → platform-builder (next per sequence: **C2**). |
+| — | platform feedback | forge-os | `546c9d5` | filed **P1** (`provision` destructive/replace-from-flags) + **P2** (add `secrets unset`); fixed the flag-less-reprovision trap in the provision-app skill (forge-os + starter). Under a one-turn baton grant; baton stays with platform-builder for C2 + P1/P2. |
 
 ---
 
