@@ -43,14 +43,17 @@ pull:
 # .env.prod.example and DEPLOY.md).
 PROD := docker compose -f compose.prod.yaml
 
-# One command to (re)deploy or update: pull the pinned images and roll the stack.
-# Unchanged services stay up; changed ones are recreated. Safe to re-run.
+# One command to (re)deploy or update — run ON THE BOX (release/deploy.sh runs it over SSH):
+# fast-forward to the pushed commit, pull the pinned images, and roll the stack. Unchanged
+# services stay up; changed ones are recreated. Safe to re-run.
 deploy:
+	git pull --ff-only
 	$(PROD) pull
 	$(PROD) up -d
 	@$(PROD) ps
 	@echo ""
-	@echo "Deployed. Verify:  curl -sf http://localhost:$${WEB_PORT:-3000}/api/health"
+	@echo "Deployed forge-os. Public:  https://forge-os.mardash.ai/api/health  (via Traefik)"
+	@echo "On the box:  make deploy-ps  /  make deploy-logs"
 
 deploy-ps:
 	$(PROD) ps

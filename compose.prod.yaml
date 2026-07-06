@@ -1,21 +1,26 @@
-# Forge-os PRODUCTION stack — the app + a Forge DATA-PLANE sidecar + Postgres.
+# Forge-os PRODUCTION stack — the app + a Forge DATA-PLANE sidecar + Postgres,
+# served at https://forge-os.mardash.ai behind the proxygen Traefik reverse proxy.
 #
 # There is NO control plane here (no build/test/lint, no ./forge, no Docker socket).
 # The data-plane sidecar provides the runtime capabilities the app needs (scheduler,
-# secrets store), calling back into `web` over the compose network.
+# secrets store), calling back into `web` over the private `internal` network. Traefik
+# reaches `web` over the shared external `proxy` network (no host port is published).
 #
-# Pin images by digest for a reproducible deploy (R1); the :latest defaults are for
-# convenience. Copy .env.prod.example -> .env and adjust. Bring up with:
-#   docker compose -f compose.prod.yaml up -d
+# Prereqs: the `proxy` network must exist (start the proxygen stack first) and DNS for
+# forge-os.mardash.ai must point at the box. Pin images by digest (R1); copy
+# .env.prod.example -> .env. Deploy with `make deploy` (see DEPLOY.md).
 name: forge-os-prod
 
 services:
   web:
     image: ${APP_IMAGE:-ghcr.io/mardash-ai/forge-os-app:latest}
     pull_policy: missing
+    restart: unless-stopped
     environment:
       - NODE_ENV=production
       - PORT=3000
+      # Next.js standalone must bind 0.0.0.0, else Traefik gets a 502 (it would bind
+      # the container-id hostname → internal IP only). Set in the image too.
       - HOSTNAME=0.0.0.0
       - DATABASE_URL=${DATABASE_URL:-postgres://forge:forge@postgres:5432/forge_os}
       # Deploy-time secret delivery — empty degrades gracefully (AI drafting 503s,
@@ -24,26 +29,33 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-    ports:
-      - "${WEB_PORT:-3000}:3000"
+    networks: [proxy, internal]
+    # Traefik ingress (no host port published — Traefik reaches the container over `proxy`).
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.forge-os.rule=Host(`forge-os.mardash.ai`)"
+      - "traefik.http.routers.forge-os.entrypoints=websecure"
+      - "traefik.http.routers.forge-os.tls.certresolver=letsencrypt"
+      - "traefik.http.services.forge-os.loadbalancer.server.port=3000"
+      - "traefik.docker.network=proxy"
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://localhost:3000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
       interval: 10s
       timeout: 5s
       retries: 5
       start_period: 20s
-    restart: unless-stopped
 
-  # Forge DATA-PLANE sidecar — runs the scheduler (C2) + secrets store (C5) and
-  # calls back into `web`. Slim image, no dev deps. Not published to the host.
+  # Forge DATA-PLANE sidecar — runs the scheduler (C2) + secrets store (C5) and calls
+  # back into `web` over `internal`. Slim image, no dev deps. Not exposed to Traefik.
   data-plane:
     image: ${FORGE_DATA_PLANE_IMAGE:-ghcr.io/mardash-ai/forge-data-plane:latest}
     pull_policy: missing
+    restart: unless-stopped
     environment:
       - PORT=3718
       - FORGE_STATE_DIR=/state
       - FORGE_APP_NAME=forge-os
-      # Reach the app over the compose network — no provisioned state required.
+      # Reach the app over the internal network — no provisioned state required.
       - FORGE_APP_CALLBACK_HOST=web
       - FORGE_APP_CALLBACK_PORT=3000
       # Master key for the encrypted secret store (set a real value in prod).
@@ -58,23 +70,31 @@ services:
     depends_on:
       web:
         condition: service_started
-    restart: unless-stopped
+    networks: [internal]
 
   postgres:
     image: postgres:16-alpine
+    restart: unless-stopped
     environment:
       - POSTGRES_USER=forge
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-forge}
       - POSTGRES_DB=forge_os
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    networks: [internal]
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U forge"]
       interval: 10s
       timeout: 5s
       retries: 5
-    restart: unless-stopped
 
 volumes:
   postgres_data:
   forge_state:
+
+networks:
+  internal:
+  # External network created by the proxygen Traefik stack (~/projects/proxygen).
+  # Start proxygen first (its `make up`) so this exists, or `up` fails "network proxy not found".
+  proxy:
+    external: true

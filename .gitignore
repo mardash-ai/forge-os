@@ -9,3 +9,7 @@ apps/*/next-env.d.ts
 # Local overrides
 .env
 *.log
+
+# Deployment helpers — serverconn.sh holds an SSH key passphrase, so these must
+# NEVER be committed to this (public) repo. Operator-local only.
+/release/
