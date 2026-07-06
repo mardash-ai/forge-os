@@ -14,7 +14,7 @@ routed to Forge**, instead of being quietly absorbed as app-local code.
 > **forge-os agent** (builds features here and simplifies `./app` onto new capabilities). They
 > never talk directly — a **human relays** between them. Read *How this file works* before editing.
 
-> **✍️ Write baton — `Holder: forge-os`.** Only the named Holder may edit this file; the other
+> **✍️ Write baton — `Holder: platform-builder`.** Only the named Holder may edit this file; the other
 > agent waits for the human to pass the baton. This is the single-writer lock over the human relay
 > (the two agents live in separate repos, so this token — not git — is what serializes writes).
 > Rules:
@@ -601,6 +601,48 @@ spec for the platform-builder; *Refactors OUT* is the forge-os plan; the *Platfo
 - **Platform delivery:** _TODO (platform-builder)_
 - **Adoption:** _TODO (forge-os)_
 
+### C7 · Deploy — zero-downtime rollout of the production stack
+**Status:** 🟡 Local stopgap · **Owner:** platform-builder · **Plane:** control-plane (the deploy *orchestration* — like `provision` — is driven from a control-plane-bearing host against a target; the app containers it rolls are data-plane, and prod itself runs no control plane)
+
+- **Needed by:** every deployed app. **forge-os** ships to https://forge-os.mardash.ai behind Traefik;
+  **forge-starter** is about to receive the same pipeline — copying the rollout into each app is the
+  pressure this row captures (a generic Deploy behavior living as app code).
+- **Reference implementation (behavioral spec):** forge-os's hand-authored production deploy, built +
+  verified this session (commits `88f14e8` + `9148e86`) — [deploy/rollout.sh](deploy/rollout.sh) (the
+  start-first roll: scale-up a new replica → wait-healthy → deregister the old from Traefik → drain →
+  stop+remove), the Traefik `loadbalancer.healthcheck` labels + `stop_grace_period` in
+  [compose.prod.yaml](compose.prod.yaml), and the `make deploy` sequence (reconcile `postgres` → roll
+  `web` → reconcile `data-plane`). A live probe across the roll showed the **1–3s of hard 502s** from a
+  plain `docker compose up -d` **eliminated** (worst case now: a single in-flight request per roll,
+  which needs app-level `SIGTERM` draining to zero out — exactly the piece a platform capability should own).
+- **Required semantics (platform must satisfy; forge-os will verify):**
+  - **Start-first** — the new version is up and **healthy** before the old is removed; there is never a
+    moment with zero healthy backends (no 502 window).
+  - **Health-gated cutover + auto-rollback** — traffic shifts to the new version only once it passes a
+    readiness check; a new version that never becomes healthy is discarded, the old keeps serving, and
+    the deploy **fails loudly** (safe, automatic rollback).
+  - **Graceful drain** — the old version is deregistered from the router and its in-flight requests are
+    allowed to finish (app-level `SIGTERM` handling) before it is stopped — *true* zero dropped
+    requests, not merely zero outage window.
+  - **Reverse-proxy aware** — works behind a shared proxy (Traefik today) with no host-port publishing;
+    ≥1 healthy backend is always routable throughout.
+  - **Pinned, idempotent, observable** — deploys a specific image digest (R1); re-running converges; the
+    deploy is a durable, inspectable record with an outcome.
+- **Proposed contract (platform may refine):** `forge deploy --app <app> --host <target> [--image
+  <ref@digest>]` → a **Deployment** Resource (returned `202` + observed via state/Events, per the Laws —
+  long-running work returns a Resource, not a blocked call), emitting `DeploymentStarted` /
+  `DeploymentCompleted` / `DeploymentRolledBack` facts. The rollout strategy is a platform
+  **Implementation** (e.g. `deploy-compose-rollout`), never app code; the app declares only its routing
+  intent (host rule) and readiness path.
+- **Refactors OUT of forge-os once adopted:** delete [deploy/rollout.sh](deploy/rollout.sh) and the
+  hand-authored `make deploy` rollout sequence; the Traefik healthcheck labels + `stop_grace_period`
+  become platform-generated (as `provision` generates `compose.yaml`). **Stays (domain / intent):** the
+  host rule (`forge-os.mardash.ai`), the readiness path (`/api/health`), and the app's `SIGTERM` drain
+  handler (or the platform ships a standard one). `release/deploy.sh` (SSH transport, gitignored) stays
+  operator-local until the capability owns remote targeting.
+- **Platform delivery:** _TODO (platform-builder — use the field template)_
+- **Adoption:** _TODO (forge-os)_
+
 ---
 
 ## Recommended sequence
@@ -613,6 +655,9 @@ Build in this order unless dependencies dictate otherwise:
 4. **C1 Agent runtime** — highest leverage for the roadmap's next theme (more agents), but larger.
 5. **C4 Notifications** — lands naturally once C2 + C3 exist; mostly a re-wiring.
 6. **C6 Health** — opportunistic; only if it falls out of the telemetry work.
+7. **C7 Deploy** — added late (the zero-downtime rollout built in forge-os this session). **The human
+   has directed it be built next, ahead of C3**, to stop the deploy pipeline being copy-pasted per app
+   (forge-starter is about to inherit it). A deliberate reorder — recorded here like P1 was.
 
 The single clearest success metric: **`lib/db.ts` shrinks back toward just `goals`/`tasks` queries**
 as C1/C3/C4 extract their tables and logic into the platform.
@@ -734,6 +779,7 @@ Append one line per state change (newest last). `by` = role; `ref` = commit / PR
 | C2 | → 🟢 ready | platform-builder | `0.4.0@sha256:9d216618…1a47` | Scheduler delivered (**data-plane**, R3): durable recurring (interval + UTC cron) / one-shot jobs, HTTP callback into the app, retry-with-backoff + resume-on-restart, observable via `inspect jobs` + `JobRan`/`JobRunFailed` facts. Habits' streak reset + Reminders' push can now move off read-time derivation. Baton → forge-os. |
 | C2 | → ✅ adopted | forge-os | `95ba999` | bumped to `0.4.0` (arm64 in index confirmed). Added idempotent UTC-midnight `POST /api/cron/habits-finalize` that persists `habit_streak_breaks` at the period boundary; pure `finalizeStreak` + 8 tests; kept read-time `computeStreak` as the source-of-truth safety net. Verified the scheduler fires on cadence (`runs:3` succeeded, `JobRan` facts, cron `next_run_at`=next UTC 00:05). Reminders push **deferred to C4** (no channel yet). `lib/db.ts` 588→656 (C2 is additive). Baton → platform-builder (next per sequence: **C3 Event log**). |
 | P3 | → 🟢 fixed | platform-builder | `0.5.1@sha256:f4987ac2…60f7d` | generated Postgres healthcheck now names the db (`pg_isready -U forge -d <app>`) — was `-U forge` only, which probes a nonexistent db "forge" and spammed `FATAL` every 10s for any app whose name ≠ `forge`. Surfaced by the forge-os prod deploy (prod compose was hand-patched; this fixes the **source** so every generated dev compose is correct). Regression test added; no data ever at risk. Interrupt fix ahead of C3. Baton → forge-os (bump + re-provision to clear dev spam, or fold into next turn; then pass back for **C3**). |
+| C7 | filed 🟡 | forge-os | `88f14e8`+`9148e86` | filed **C7 · Deploy** (zero-downtime rollout). The production deploy pipeline built in forge-os this session — start-first roll + Traefik health-gate + drain — is generic and about to be **copy-pasted into forge-starter**; recorded as platform pressure so Deploy becomes a real Forge capability apps *consume*, not duplicate. Live-verified the 1–3s of 502s are gone (residual: 1 in-flight request per roll → needs app `SIGTERM` draining, which the capability would own). Human directed it be built **next**, ahead of C3. Baton → platform-builder to deliver. |
 
 ---
 
