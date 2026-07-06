@@ -1,0 +1,164 @@
+#!/usr/bin/env bash
+#
+# new-app — provision a complete, validated app in ONE command.
+#
+# This encodes the full Forge provisioning runbook (docs: PROVISION_NEW_APP):
+#   ensure platform up -> init -> provision -> install -> build -> test -> lint
+# with the step gate applied after every capability, automatic failure
+# diagnosis (forge explain), and a definition-of-done summary.
+#
+# Usage:
+#   ./new-app <kebab-name> [--with-postgres] [--with-redis] [--dev] [--goal "…"]
+#
+# Everything runs in Docker via ./forge. The only host tools used are Docker,
+# curl, grep, and sed.
+set -euo pipefail
+cd "$(dirname "$0")"
+
+if [ -f .env ]; then set -a; . ./.env; set +a; fi
+PORT="${FORGE_PORT:-3717}"
+
+# ── args ────────────────────────────────────────────────────────────────────
+APP="${1:-}"; shift || true
+PROVISION_FLAGS=()
+START_DEV=0
+GOAL=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --with-postgres) PROVISION_FLAGS+=(--with-postgres) ;;
+    --with-redis)    PROVISION_FLAGS+=(--with-redis) ;;
+    --dev)           START_DEV=1 ;;
+    --goal)          GOAL="${2:-}"; shift ;;
+    *) echo "unknown option: $1" >&2; exit 2 ;;
+  esac
+  shift
+done
+
+if [ -z "$APP" ]; then
+  echo "usage: ./new-app <kebab-name> [--with-postgres] [--with-redis] [--dev] [--goal \"…\"]" >&2
+  exit 2
+fi
+if ! printf '%s' "$APP" | grep -Eq '^[a-z0-9][a-z0-9-]*$'; then
+  echo "error: app name must be kebab-case (^[a-z0-9][a-z0-9-]*$): '$APP'" >&2
+  exit 2
+fi
+
+# ── tiny JSON readers (compact single-line JSON only; no host deps) ──────────
+jget() { printf '%s' "$2" | sed -n "s/.*\"$1\":\"\([^\"]*\)\".*/\1/p" | head -1; }   # string field
+jnum() { printf '%s' "$2" | sed -n "s/.*\"$1\":\([0-9][0-9]*\).*/\1/p" | head -1; }  # numeric field
+jarr() { printf '%s' "$2" | sed -n "s/.*\"$1\":\[\([^]]*\)\].*/\1/p" | head -1 | tr -d '"'; } # array -> csv
+# error message may contain escaped quotes; capture up to the next field, unescape.
+jmsg() {
+  local m; m="$(printf '%s' "$1" | sed -n 's/.*"message":"\(.*\)","retry":.*/\1/p')"
+  [ -z "$m" ] && m="$(jget message "$1")"
+  printf '%s' "$m" | sed 's/\\"/"/g'
+}
+
+bold=$(printf '\033[1m'); dim=$(printf '\033[2m'); grn=$(printf '\033[32m'); red=$(printf '\033[31m'); rst=$(printf '\033[0m')
+ok(){ printf '%s✓%s %s\n' "$grn" "$rst" "$1"; }
+bad(){ printf '%s✗%s %s\n' "$red" "$rst" "$1"; }
+
+LAST_OUT=""
+
+# Diagnose the most recent failed capability, then stop.
+diagnose_and_exit() {
+  local rid cause files fix ex
+  rid="$(jget resource "$LAST_OUT")"
+  bad "failed  ($rid)"
+  ex="$(./forge explain --resource "$rid" 2>/dev/null || true)"
+  cause="$(jget likely_cause "$ex")"
+  files="$(jarr file_refs "$ex")"
+  fix="$(jarr suggested_actions "$ex")"
+  echo ""
+  echo "  ${bold}diagnosis${rst}"
+  [ -n "$cause" ] && echo "    cause: $cause"
+  [ -n "$files" ] && echo "    files: $files"
+  [ -n "$fix" ]   && echo "    fix:   $fix"
+  echo ""
+  echo "  Edit the file(s) above, then re-run the failed step, e.g.:"
+  echo "    ./forge build --app $APP"
+  echo "  ${dim}(or ask Claude to fix and re-run — see .claude/skills/provision-app)${rst}"
+  exit 1
+}
+
+# Run one capability, apply the step gate. On platform error or capability
+# failure, report and exit. On success, leave the result in LAST_OUT.
+run() {
+  local label="$1"; shift
+  printf '  %-10s ' "$label"
+  local out; out="$("$@" 2>/dev/null || true)"
+  LAST_OUT="$out"
+  if printf '%s' "$out" | grep -q '"error"'; then
+    bad "platform error"
+    echo "    $(jmsg "$out")"
+    echo "    ${dim}(retry: $(jget retry "$out"))${rst}"
+    exit 1
+  fi
+  if [ "$(jget status "$out")" = "failed" ]; then
+    diagnose_and_exit
+  fi
+}
+
+# ── go ──────────────────────────────────────────────────────────────────────
+echo ""
+echo "${bold}Forge · new app:${rst} $APP ${dim}(web/nextjs)${rst}"
+echo ""
+
+# Ensure the platform is up and healthy.
+printf '  %-10s ' "platform"
+if ! docker compose ps --status=running --services 2>/dev/null | grep -qx api; then
+  docker compose up -d >/dev/null 2>&1 || true
+fi
+for _ in $(seq 1 40); do
+  if curl -sf "http://localhost:${PORT}/health" >/dev/null 2>&1; then break; fi
+  sleep 1
+done
+if ! curl -sf "http://localhost:${PORT}/health" >/dev/null 2>&1; then
+  bad "platform did not become healthy on :$PORT"; exit 1
+fi
+ok "up"
+
+run "init"       ./forge init app --name "$APP" --platform web --framework nextjs
+ok "$(jget resource "$LAST_OUT")"
+
+run "provision"  ./forge provision --app "$APP" ${PROVISION_FLAGS[@]+"${PROVISION_FLAGS[@]}"}
+ok "services: $(jarr services "$LAST_OUT")"
+
+run "install"    ./forge install --app "$APP"
+ok "$(jget summary "$LAST_OUT")"
+
+run "build"      ./forge build --app "$APP"
+BUILD_ID="$(jget resource "$LAST_OUT")"
+ok "artifacts: $(jarr artifact_refs "$LAST_OUT")"
+
+run "test"       ./forge test --app "$APP"
+TEST_ID="$(jget resource "$LAST_OUT")"
+ok "passed=$(jnum passed "$LAST_OUT") failed=$(jnum failed "$LAST_OUT")"
+
+run "lint"       ./forge lint --app "$APP"
+LINT_ID="$(jget resource "$LAST_OUT")"
+ok "problems=$(jnum problems "$LAST_OUT")"
+
+# Optional: turn a Goal into a plan.
+if [ -n "$GOAL" ]; then
+  run "plan"     ./forge plan --app "$APP" --goal "$GOAL"
+  ok "plan: $(jget resource "$LAST_OUT")"
+fi
+
+# Optional: start the dev server and wait for readiness.
+if [ "$START_DEV" = "1" ]; then
+  run "dev"      ./forge dev --app "$APP"
+  printf '  %-10s ' "health"
+  for _ in $(seq 1 40); do
+    if curl -sf "http://localhost:3000/api/health" >/dev/null 2>&1; then break; fi
+    sleep 2
+  done
+  if curl -sf "http://localhost:3000/api/health" >/dev/null 2>&1; then ok "http://localhost:3000"; else bad "not ready yet"; fi
+fi
+
+echo ""
+echo "${grn}${bold}✓ $APP is ready.${rst}"
+echo "  ${dim}build=$BUILD_ID  test=$TEST_ID  lint=$LINT_ID${rst}"
+echo "  source: apps/$APP/"
+[ "$START_DEV" = "1" ] || echo "  run it: ./forge dev --app $APP   ${dim}(http://localhost:3000)${rst}"
+echo ""

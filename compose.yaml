@@ -1,0 +1,33 @@
+# (Compose project name defaults to this directory's name, so each Builder
+#  project gets its own isolated Forge control-plane instance.)
+
+# The Forge CONTROL PLANE runs as a prebuilt image. This starter has no platform
+# source of its own — it just points the control plane at THIS directory as the
+# workspace and hands it the host Docker socket so Capabilities can run app work
+# in Docker (Docker-out-of-Docker).
+#
+# This is the control plane (developer/orchestration) image — it carries the
+# Forge runtime + Docker CLI. It is deliberately separate from the future Forge
+# DATA PLANE image (production/deploy runtime), which will NOT ship developer
+# dependencies.
+services:
+  api:
+    image: ${FORGE_IMAGE:-ghcr.io/mardash-ai/forge-control-plane:latest}
+    # Use a locally-present image if the registry copy isn't pulled yet.
+    pull_policy: missing
+    ports:
+      - "${FORGE_PORT:-3717}:${FORGE_PORT:-3717}"
+    environment:
+      - PORT=${FORGE_PORT:-3717}
+      # This project directory IS the Forge workspace. Apps scaffold into
+      # ./apps/<name>; Resource/Event state lives in ./.forge.
+      - FORGE_WORKSPACE=${PWD}
+      - FORGE_STATE_DIR=${PWD}/.forge
+    volumes:
+      # Talk to the host Docker daemon.
+      - /var/run/docker.sock:/var/run/docker.sock
+      # Mount this project at the SAME absolute path host==container so nested
+      # `docker compose` (run by Capabilities) resolves app bind-mounts on the
+      # host daemon. Do not change this symmetry.
+      - ${PWD}:${PWD}
+    restart: unless-stopped

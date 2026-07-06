@@ -1,0 +1,11 @@
+# Forge platform state (Resources, Events, logs) — regenerable, local.
+.forge/
+
+# App build artifacts and dependencies (installed into Docker volumes anyway).
+apps/*/node_modules/
+apps/*/.next/
+apps/*/next-env.d.ts
+
+# Local overrides
+.env
+*.log
