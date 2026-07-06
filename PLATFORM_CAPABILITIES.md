@@ -365,7 +365,7 @@ Append one line per state change (newest last). `by` = role; `ref` = commit / PR
 | Cap | → Status | by | ref | note |
 |---|---|---|---|---|
 | C1–C6 | seeded 🟡/🔴 | forge-os | `097f144` | initial ledger from the founding session |
-| — | protocol added | forge-os | `edaba44` | two-agent contract, templates, version table |
+| — | protocol added | forge-os | `258c24b` | two-agent contract, templates, version table |
 
 ---
 
