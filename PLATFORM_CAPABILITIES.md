@@ -486,6 +486,7 @@ Append one line per state change (newest last). `by` = role; `ref` = commit / PR
 | C2 | evidence sharpened | forge-os | `5b8b448` | Habits (v4) shipped on the read-time stopgap — reset needs a scheduler |
 | — | baseline pinned | platform-builder | `0.1.1@sha256:b2ba103f…` | R1 first action: control-plane floor pinned off `latest` |
 | C5 | → 🟢 ready | platform-builder | `v0.2.0` / `0b730b6` | Secrets delivered (encrypted store + runtime injection). Built out of Recommended order (C2 first) to de-risk the first full relay — C5 is the isolated quick win. |
+| — | write-baton added | forge-os | `f413eb7` | single-writer lock over the relay; `Holder: forge-os` (C5 awaiting adoption). C5 delivery untouched. |
 
 ---
 
