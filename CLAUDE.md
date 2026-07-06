@@ -26,6 +26,18 @@ platform capabilities forge-os needs that should be built *in Forge* and shared,
 refactors out of `./app` once they exist. Every feature updates it (step 6 of the `add-a-feature`
 skill). `PROJECT_IDEA.md` tracks the *features*; this tracks the *platform debt* they create.
 
+## Keep the starter template in sync
+
+There's a second place generic value can belong: this repo was scaffolded from the
+**forge-starter** template. If you add something that should exist in *every* Forge web app — a
+scaffolding convention, a shared skill, a config default, a lint/test setup, a broadly useful
+helper — mirror it into forge-starter too. Unlike platform capabilities, this is deliberately
+**lightweight and opportunistic**: no ledger, no handoff, no version tracking — just update the
+template when the opportunity arises. It happens far less often than pressure on Forge itself;
+the vast majority of work is forge-os-specific (domain logic, features, the wind-tunnel process)
+and should **not** touch the starter. When in doubt, ask: *would a brand-new, unrelated Forge app
+want this on day one?* If yes, it belongs in the starter.
+
 ## The one rule
 
 **Do all app lifecycle work through `./forge` (or `./new-app`). Never run `docker`, `npm`,
