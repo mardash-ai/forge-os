@@ -73,11 +73,13 @@ multi-arch (`amd64` + `arm64`).
 5. **DNS:** `forge-os.mardash.ai` must point at the box (Traefik already serves `*.mardash.ai`).
 6. **Deploy:** `./release/deploy.sh` from your laptop (or `make deploy` on the box).
 
-> **Keychain gotcha (Docker Desktop on macOS box).** A private-image `pull` over SSH can fail with
-> *"keychain cannot be accessed … the keychain may be locked"* — the SSH session can't unlock the
-> login keychain. Fix once from an interactive shell: `./release/box-shell.sh`, then
-> `security unlock-keychain ~/Library/Keychains/login.keychain-db` and
-> `docker compose -f compose.prod.yaml pull`. Cached images then redeploy fine.
+> **Keychain gotcha (Docker Desktop on macOS box).** Even with **public** packages, Docker Desktop
+> always consults its credential keychain, which an SSH session can't unlock → `docker compose pull`
+> fails with *"keychain cannot be accessed …"*. `make deploy` treats the pull as **non-fatal** and
+> deploys the **already-cached** images, so config/code changes ship hands-free. To land a **new
+> image**, unlock + pull once interactively: `./release/box-shell.sh`, then
+> `security -v unlock-keychain ~/Library/Keychains/login.keychain-db` and
+> `docker compose -f compose.prod.yaml pull`, then re-deploy.
 
 ## `make deploy` (what runs on the box)
 
@@ -85,7 +87,7 @@ multi-arch (`amd64` + `arm64`).
 
 | Command | What it does |
 |---|---|
-| `make deploy` | `git pull --ff-only` → pull pinned images → `up -d` → `ps` (the deploy/update command) |
+| `make deploy` | pull images (**non-fatal** — see keychain note) → `up -d` → `ps`. `release/deploy.sh` runs `git pull --ff-only` first, so this deploys the current checkout. |
 | `make deploy-ps` | container status |
 | `make deploy-logs` | tail all logs |
 | `make deploy-config` | validate `compose.prod.yaml` + `.env` (no changes) |

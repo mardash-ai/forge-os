@@ -43,12 +43,13 @@ pull:
 # .env.prod.example and DEPLOY.md).
 PROD := docker compose -f compose.prod.yaml
 
-# One command to (re)deploy or update — run ON THE BOX (release/deploy.sh runs it over SSH):
-# fast-forward to the pushed commit, pull the pinned images, and roll the stack. Unchanged
-# services stay up; changed ones are recreated. Safe to re-run.
+# Deploy the current checkout — run ON THE BOX (release/deploy.sh git-pulls, then runs this
+# over SSH). Pull new images, then roll the stack; unchanged services stay up. The image pull
+# is NON-FATAL: on the Docker-Desktop box the credential keychain can't be read over SSH, so a
+# pull may fail — the deploy then proceeds with the already-cached images. To land BRAND-NEW
+# images, unlock the keychain + pull interactively first (see DEPLOY.md).
 deploy:
-	git pull --ff-only
-	$(PROD) pull
+	$(PROD) pull || echo "  ⚠ image pull skipped (Docker Desktop keychain locked over SSH) — deploying cached images. To update images: unlock-keychain + '$(PROD) pull' interactively, then re-deploy."
 	$(PROD) up -d
 	@$(PROD) ps
 	@echo ""
