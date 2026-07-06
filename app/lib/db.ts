@@ -6,6 +6,14 @@ import { Pool } from 'pg';
 import type { Goal, GoalStatus, GoalWithProgress, GoalWithTasks, Task } from './goals';
 import { progressPercent } from './goals';
 import type { EventData, EventType, TimelineEvent } from './timeline';
+import { bucketFor } from './schedule';
+import {
+  COLD_THRESHOLD_DAYS,
+  activeNotifications,
+  buildNotifications,
+  type ColdInput,
+  type Notification,
+} from './notifications';
 
 // The provisioned compose network reaches Postgres at host `postgres` with these
 // fixed dev credentials; DATABASE_URL overrides when set (see .env.example).
@@ -61,6 +69,11 @@ function ensureSchema(): Promise<void> {
       );
       CREATE INDEX IF NOT EXISTS events_created_at_idx ON events (created_at DESC);
       CREATE INDEX IF NOT EXISTS events_goal_id_idx ON events (goal_id);
+      -- Only dismissals are stored; notifications themselves are derived live.
+      CREATE TABLE IF NOT EXISTS dismissed_notifications (
+        key text PRIMARY KEY,
+        dismissed_at timestamptz NOT NULL DEFAULT now()
+      );
     `)
     .then(() => undefined)
     .catch((err: unknown) => {
@@ -333,4 +346,49 @@ export async function listDueTasks(): Promise<DueTask[]> {
     dueDate: r.due_date,
     createdAt: new Date(r.created_at).toISOString(),
   }));
+}
+
+// ---- notifications (derived; only dismissals are persisted) ----
+
+/** Active goals whose last activity (latest event, else creation) is older than
+ *  the cold threshold — the "gone cold" candidates. Coldest first. */
+async function listColdGoals(thresholdDays: number): Promise<ColdInput[]> {
+  const rows = await query<{ id: string; title: string; last_activity: Date }>(
+    `SELECT g.id, g.title, COALESCE(MAX(e.created_at), g.created_at) AS last_activity
+     FROM goals g
+     LEFT JOIN events e ON e.goal_id = g.id
+     WHERE g.status = 'active'
+     GROUP BY g.id, g.created_at
+     HAVING COALESCE(MAX(e.created_at), g.created_at) < now() - ($1::int * interval '1 day')
+     ORDER BY last_activity ASC`,
+    [thresholdDays],
+  );
+  return rows.map((r) => ({
+    goalId: r.id,
+    goalTitle: r.title,
+    lastActivity: new Date(r.last_activity).toISOString(),
+  }));
+}
+
+async function listDismissedKeys(): Promise<Set<string>> {
+  const rows = await query<{ key: string }>(`SELECT key FROM dismissed_notifications`);
+  return new Set(rows.map((r) => r.key));
+}
+
+/** Record a dismissal. Idempotent, and tolerant of any key string. */
+export async function dismissNotification(key: string): Promise<void> {
+  await query(`INSERT INTO dismissed_notifications (key) VALUES ($1) ON CONFLICT (key) DO NOTHING`, [key]);
+}
+
+/** The live, non-dismissed notifications, most-urgent first. */
+export async function listActiveNotifications(now: Date): Promise<Notification[]> {
+  const [due, cold, dismissed] = await Promise.all([
+    listDueTasks(),
+    listColdGoals(COLD_THRESHOLD_DAYS),
+    listDismissedKeys(),
+  ]);
+  const overdue = due
+    .filter((t) => bucketFor(t.dueDate, now) === 'overdue')
+    .map((t) => ({ id: t.id, goalId: t.goalId, goalTitle: t.goalTitle, title: t.title, dueDate: t.dueDate }));
+  return activeNotifications(buildNotifications(overdue, cold, now), dismissed);
 }
