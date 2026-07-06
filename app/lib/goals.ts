@@ -18,6 +18,7 @@ export interface Task {
   goalId: string;
   title: string;
   done: boolean;
+  dueDate: string | null; // calendar date "YYYY-MM-DD", or null
   createdAt: string;
 }
 

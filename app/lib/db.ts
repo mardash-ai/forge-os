@@ -45,6 +45,9 @@ function ensureSchema(): Promise<void> {
         done boolean NOT NULL DEFAULT false,
         created_at timestamptz NOT NULL DEFAULT now()
       );
+      -- Added by the Time & Today feature (idempotent for existing tasks tables).
+      ALTER TABLE tasks ADD COLUMN IF NOT EXISTS due_date date;
+      CREATE INDEX IF NOT EXISTS tasks_due_date_idx ON tasks (due_date);
       -- Activity log. goal_id/task_id are plain refs (no FK): events are an
       -- immutable record and carry a denormalized snapshot in data, so they
       -- render even if the goal/task later changes.
@@ -86,6 +89,7 @@ interface TaskRow {
   goal_id: string;
   title: string;
   done: boolean;
+  due_date: string | null;
   created_at: Date;
 }
 
@@ -104,12 +108,14 @@ function mapTask(r: TaskRow): Task {
     goalId: r.goal_id,
     title: r.title,
     done: r.done,
+    dueDate: r.due_date,
     createdAt: new Date(r.created_at).toISOString(),
   };
 }
 
 const GOAL_COLS = 'id, title, description, status, created_at';
-const TASK_COLS = 'id, goal_id, title, done, created_at';
+// due_date cast to text so pg returns "YYYY-MM-DD" instead of a tz-shifted Date.
+const TASK_COLS = 'id, goal_id, title, done, due_date::text AS due_date, created_at';
 const EVENT_COLS = 'id, type, goal_id, task_id, data, created_at';
 
 interface EventRow {
@@ -266,7 +272,7 @@ export async function completeTask(id: string): Promise<Task | null> {
     `WITH before AS (SELECT id, done AS was_done FROM tasks WHERE id = $1)
      UPDATE tasks t SET done = true FROM before
      WHERE t.id = before.id
-     RETURNING t.id, t.goal_id, t.title, t.done, t.created_at, before.was_done`,
+     RETURNING t.id, t.goal_id, t.title, t.done, t.due_date::text AS due_date, t.created_at, before.was_done`,
     [id],
   );
   if (rows.length === 0) return null;
@@ -280,4 +286,51 @@ export async function completeTask(id: string): Promise<Task | null> {
     });
   }
   return task;
+}
+
+/** Sets or clears (null) a task's due date, or null if the task id is unknown. */
+export async function setTaskDueDate(id: string, dueDate: string | null): Promise<Task | null> {
+  if (!isUuid(id)) return null;
+  const rows = await query<TaskRow>(
+    `UPDATE tasks SET due_date = $2 WHERE id = $1 RETURNING ${TASK_COLS}`,
+    [id, dueDate],
+  );
+  return rows.length ? mapTask(rows[0]) : null;
+}
+
+/** An incomplete, dated task plus its goal's title — the Today view's unit. */
+export interface DueTask {
+  id: string;
+  goalId: string;
+  goalTitle: string;
+  title: string;
+  dueDate: string;
+  createdAt: string;
+}
+
+/** Incomplete tasks that have a due date, with goal title, soonest due first. */
+export async function listDueTasks(): Promise<DueTask[]> {
+  const rows = await query<{
+    id: string;
+    goal_id: string;
+    goal_title: string;
+    title: string;
+    due_date: string;
+    created_at: Date;
+  }>(
+    `SELECT t.id, t.goal_id, t.title, t.due_date::text AS due_date, t.created_at,
+            g.title AS goal_title
+     FROM tasks t
+     JOIN goals g ON g.id = t.goal_id
+     WHERE t.done = false AND t.due_date IS NOT NULL
+     ORDER BY t.due_date ASC`,
+  );
+  return rows.map((r) => ({
+    id: r.id,
+    goalId: r.goal_id,
+    goalTitle: r.goal_title,
+    title: r.title,
+    dueDate: r.due_date,
+    createdAt: new Date(r.created_at).toISOString(),
+  }));
 }

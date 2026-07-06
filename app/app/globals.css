@@ -824,3 +824,204 @@ a {
     transform: none;
   }
 }
+
+/* ============ Today focus board ============ */
+.board {
+  margin-top: 14px;
+}
+.bucket {
+  margin-top: 26px;
+}
+.bucket-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 6px;
+}
+.bucket-head .label {
+  font-family: var(--mono);
+  font-size: 12px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ash);
+}
+.bucket-head .count {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: #6f665c;
+  font-variant-numeric: tabular-nums;
+}
+.bucket-head .rule {
+  flex: 1 1 auto;
+  height: 1px;
+  background: var(--iron-edge);
+}
+.bucket.overdue .bucket-head .label {
+  color: var(--warn);
+}
+
+.rows {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.row {
+  display: grid;
+  grid-template-columns: 26px 1fr auto;
+  align-items: center;
+  column-gap: 12px;
+  padding: 11px 12px 11px 10px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  opacity: 0;
+  transform: translateY(4px);
+  animation: event-rise 0.4s ease forwards;
+}
+.row:hover {
+  background: rgba(255, 255, 255, 0.02);
+}
+.row.overdue {
+  border-left: 3px solid var(--warn);
+  padding-left: 9px;
+  border-radius: 2px 7px 7px 2px;
+}
+
+.strike {
+  width: 22px;
+  height: 22px;
+  flex: none;
+  border-radius: 50%;
+  cursor: pointer;
+  border: 1.5px solid #5a4d40;
+  background: transparent;
+  color: transparent;
+  display: grid;
+  place-items: center;
+  font-size: 13px;
+  transition: border-color 0.12s ease, color 0.12s ease;
+}
+.strike:hover:not(:disabled) {
+  border-color: var(--t3);
+  color: var(--t3);
+}
+.strike:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+.strike:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.row .main {
+  min-width: 0;
+}
+.row .title {
+  font-size: 15px;
+  color: var(--chalk);
+}
+.row-goal {
+  display: block;
+  font-size: 12.5px;
+  color: #6f665c;
+  text-decoration: none;
+  margin-top: 1px;
+}
+.row-goal:hover {
+  color: var(--ash);
+}
+.row-goal:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+  border-radius: 3px;
+}
+
+.due-chip {
+  font-family: var(--mono);
+  font-size: 12px;
+  letter-spacing: 0.03em;
+  white-space: nowrap;
+  padding: 3px 9px;
+  border-radius: 999px;
+  border: 1px solid var(--iron-edge);
+  color: var(--ash);
+  font-variant-numeric: tabular-nums;
+  justify-self: end;
+}
+.due-chip.overdue {
+  color: var(--warn);
+  border-color: rgba(208, 80, 58, 0.5);
+}
+.due-chip.today {
+  color: #1a0f07;
+  background: var(--accent);
+  border-color: var(--accent);
+  font-weight: 600;
+}
+.due-chip.week {
+  color: var(--ash);
+}
+.due-chip.later {
+  color: #6f665c;
+}
+
+/* due-date control on the goal detail task rows */
+.due-control {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex: none;
+}
+.due-input {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--ash);
+  background: var(--forge);
+  border: 1px solid var(--iron-edge);
+  border-radius: 5px;
+  padding: 4px 7px;
+  color-scheme: dark;
+}
+.due-control.set .due-input {
+  color: var(--t3);
+}
+.due-input:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+.due-clear {
+  border: none;
+  background: transparent;
+  color: var(--ash);
+  cursor: pointer;
+  font-size: 16px;
+  line-height: 1;
+  padding: 2px 4px;
+  border-radius: 4px;
+}
+.due-clear:hover {
+  color: var(--warn);
+}
+.due-clear:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+@media (max-width: 560px) {
+  .row {
+    grid-template-columns: 26px 1fr;
+    row-gap: 2px;
+  }
+  .row .due-chip {
+    grid-column: 2;
+    justify-self: start;
+    margin-top: 2px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .row {
+    animation: none;
+    opacity: 1;
+    transform: none;
+  }
+}

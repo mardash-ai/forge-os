@@ -5,6 +5,7 @@ import { HeatBar } from '@/app/components/HeatBar';
 import { AddTaskForm } from '@/app/components/AddTaskForm';
 import { CompleteButton } from '@/app/components/CompleteButton';
 import { StatusControl } from '@/app/components/StatusControl';
+import { DueDate } from '@/app/components/DueDate';
 
 export const dynamic = 'force-dynamic';
 
@@ -45,7 +46,14 @@ export default async function GoalPage({ params }: { params: { id: string } }) {
                 {t.done ? '✓' : '○'}
               </span>
               <span className="task-title">{t.title}</span>
-              {t.done ? <span className="task-state">Struck</span> : <CompleteButton id={t.id} />}
+              {t.done ? (
+                <span className="task-state">Struck</span>
+              ) : (
+                <>
+                  <DueDate taskId={t.id} dueDate={t.dueDate} />
+                  <CompleteButton id={t.id} />
+                </>
+              )}
             </li>
           ))}
         </ul>
