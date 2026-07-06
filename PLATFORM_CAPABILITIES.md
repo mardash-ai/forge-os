@@ -14,7 +14,7 @@ routed to Forge**, instead of being quietly absorbed as app-local code.
 > **forge-os agent** (builds features here and simplifies `./app` onto new capabilities). They
 > never talk directly — a **human relays** between them. Read *How this file works* before editing.
 
-> **✍️ Write baton — `Holder: platform-builder`.** Only the named Holder may edit this file; the other
+> **✍️ Write baton — `Holder: forge-os`.** Only the named Holder may edit this file; the other
 > agent waits for the human to pass the baton. This is the single-writer lock over the human relay
 > (the two agents live in separate repos, so this token — not git — is what serializes writes).
 > Rules:
@@ -504,7 +504,7 @@ Build these when a feature *needs* them, not because the roadmap lists them:
 **Not** new capabilities — defects / UX gaps in **existing** Forge behavior that forge-os hit while
 adopting. The platform-builder owns the fix; track these alongside capability work.
 
-### P1 · `provision` is destructive (replace-from-flags, not additive) — 🔴 open
+### P1 · `provision` is destructive (replace-from-flags, not additive) — 🟢 fixed in 0.3.0 · Owner: forge-os (bump + verify)
 - **Hit during:** C5 adoption. `forge provision --app forge-os --secret ANTHROPIC_API_KEY` (without
   `--with-postgres`) **silently dropped the Postgres service** from `app/compose.yaml`; only a second
   provision with `--with-postgres --secret …` restored it. It also **resets** hand-applied host-port
@@ -521,6 +521,21 @@ adopting. The platform-builder owns the fix; track these alongside capability wo
   and/or **preserve** existing services unless explicitly removed; and/or **refuse** to drop a
   service that owns a data volume without an explicit `--force`. Persist declared infra in
   `forge.app.json` so a re-provision needs no flags.
+- **Fix delivered (0.3.0) — satisfies the Ask in full:** `provision` now **converges** the desired
+  environment from `forge.app.json` (a persisted `infra` block) + *additive* flags. A flag-less
+  re-provision never drops a service or resets a host-port remap; a data-volume service (Postgres)
+  is refused (**422**) unless dropped with explicit `--force`; apps provisioned *before* this fix are
+  recovered from their existing `compose.yaml` on the first re-provision (so migration is safe). New
+  flags: `--without-postgres` / `--without-redis`, `--postgres-port` / `--redis-port` / `--web-port`,
+  `--force`; `inspect app` surfaces the persisted `infra`.
+  - **Delivered in:** `ghcr.io/mardash-ai/forge-control-plane:0.3.0 @ sha256:8d0dea6636acf6fda923ea8f354363e64e4fdce504b0f013ee5d4ca8b910df05`
+    (multi-arch `amd64`+`arm64`; platform `v0.3.0` / commit `41494ae`).
+  - **Adopt it:** bump `FORGE_IMAGE` to the pin above, then run `forge provision --app <app>` **once
+    with no flags** — it recovers your current services from `compose.yaml` and writes the `infra`
+    block; nothing is dropped. No app-code change.
+  - **Verify:** `forge provision --app <app> --secret <X>` (no `--with-postgres`) keeps Postgres (the
+    original footgun); `forge inspect app --app <app>` shows the persisted `infra`; `forge provision
+    --app <app> --without-postgres` is refused **422** without `--force`.
 
 ### P2 · Add `secrets unset` (C5 follow-up) — 🟡 minor
 - **Context:** C5 shipped `secrets set` / `list` but no way to **remove/revoke** a secret. Not in the
@@ -549,6 +564,7 @@ Append one line per state change (newest last). `by` = role; `ref` = commit / PR
 | C5 | → 🟢 re-delivered | platform-builder | `0.2.0@sha256:924814d3…eb762` | republished 0.2.0 multi-arch (amd64+arm64); *Delivered in* + Runtime table updated to the new index digest. ⛔ resolved — forge-os may clear the ⛔ in the C5 Adoption block on re-adopt. Baton → forge-os. |
 | C5 | → ✅ adopted | forge-os | `d2faf4d` | Secrets adopted: key in Forge's encrypted vault, injected at `forge dev`; `app/.env` + hand-wired compose plumbing deleted; control plane pinned to `0.2.0@924814d3…`. Verified 200 draft with `app/.env` gone. Baton → platform-builder (next per sequence: **C2**). |
 | — | platform feedback | forge-os | `546c9d5` | filed **P1** (`provision` destructive/replace-from-flags) + **P2** (add `secrets unset`); fixed the flag-less-reprovision trap in the provision-app skill (forge-os + starter). Under a one-turn baton grant; baton stays with platform-builder for C2 + P1/P2. |
+| P1 | → 🟢 fixed | platform-builder | `0.3.0@sha256:8d0dea66…df05` | `provision` now converges (non-destructive): persisted `infra`, additive flags, `--force` volume guard, host-port + pre-fix-`compose` recovery. Prioritized ahead of C2 — data-safety footgun that recurs on every adoption. Baton → forge-os (bump + verify; then pass back for C2). |
 
 ---
 
