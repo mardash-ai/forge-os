@@ -6,6 +6,7 @@ import { AddTaskForm } from '@/app/components/AddTaskForm';
 import { CompleteButton } from '@/app/components/CompleteButton';
 import { StatusControl } from '@/app/components/StatusControl';
 import { DueDate } from '@/app/components/DueDate';
+import { PlanTasks } from '@/app/components/PlanTasks';
 
 export const dynamic = 'force-dynamic';
 
@@ -60,6 +61,7 @@ export default async function GoalPage({ params }: { params: { id: string } }) {
       )}
 
       <AddTaskForm goalId={goal.id} />
+      <PlanTasks goalId={goal.id} />
     </main>
   );
 }

@@ -74,6 +74,19 @@ function ensureSchema(): Promise<void> {
         key text PRIMARY KEY,
         dismissed_at timestamptz NOT NULL DEFAULT now()
       );
+      -- Agent runs: the first Agent Task resource. Each row records one
+      -- capability invocation (kind) and the Artifact it produced (result).
+      CREATE TABLE IF NOT EXISTS agent_runs (
+        id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+        goal_id uuid,
+        kind text NOT NULL,
+        status text NOT NULL,
+        model text,
+        result jsonb,
+        error text,
+        created_at timestamptz NOT NULL DEFAULT now()
+      );
+      CREATE INDEX IF NOT EXISTS agent_runs_goal_id_idx ON agent_runs (goal_id);
     `)
     .then(() => undefined)
     .catch((err: unknown) => {
@@ -391,4 +404,64 @@ export async function listActiveNotifications(now: Date): Promise<Notification[]
     .filter((t) => bucketFor(t.dueDate, now) === 'overdue')
     .map((t) => ({ id: t.id, goalId: t.goalId, goalTitle: t.goalTitle, title: t.title, dueDate: t.dueDate }));
   return activeNotifications(buildNotifications(overdue, cold, now), dismissed);
+}
+
+// ---- agent runs (the Agent Task / Artifact record) ----
+
+/** A persisted record of one agent invocation and the artifact it produced. */
+export interface AgentRun {
+  id: string;
+  goalId: string | null;
+  kind: string;
+  status: 'succeeded' | 'failed';
+  model: string | null;
+  result: unknown;
+  error: string | null;
+  createdAt: string;
+}
+
+interface AgentRunRow {
+  id: string;
+  goal_id: string | null;
+  kind: string;
+  status: string;
+  model: string | null;
+  result: unknown;
+  error: string | null;
+  created_at: Date;
+}
+
+/** Persist an agent run (succeeded or failed) and return it with its new id. */
+export async function recordAgentRun(input: {
+  goalId: string | null;
+  kind: string;
+  status: 'succeeded' | 'failed';
+  model: string | null;
+  result: unknown;
+  error: string | null;
+}): Promise<AgentRun> {
+  const rows = await query<AgentRunRow>(
+    `INSERT INTO agent_runs (goal_id, kind, status, model, result, error)
+     VALUES ($1, $2, $3, $4, $5::jsonb, $6)
+     RETURNING id, goal_id, kind, status, model, result, error, created_at`,
+    [
+      input.goalId,
+      input.kind,
+      input.status,
+      input.model,
+      input.result === null || input.result === undefined ? null : JSON.stringify(input.result),
+      input.error,
+    ],
+  );
+  const r = rows[0];
+  return {
+    id: r.id,
+    goalId: r.goal_id,
+    kind: r.kind,
+    status: r.status as AgentRun['status'],
+    model: r.model,
+    result: r.result ?? null,
+    error: r.error,
+    createdAt: new Date(r.created_at).toISOString(),
+  };
 }

@@ -169,19 +169,33 @@ each shipped green (lint/build/test) and verified end-to-end:
     platform gap: everything is read-time — Forge still needs a **scheduler / background jobs**
     to push these while you're away.*
 
+**v3 · Planner Agent — the first AI agent.** *(`specs/planner-agent/`)* From a Goal's title
+and description, the **Planner** drafts a list of proposed Tasks you review as cold "sketches"
+and accept — a human always confirms before anything is added.
+
+-   **What a user can do:** on a goal, *Draft tasks with AI* → review the proposed tasks (each
+    a dashed, temper-blue *sketch* with an accept toggle) → accept the ones worth keeping, which
+    become real Tasks (Timeline `task.added`, count toward progress). Missing key ⇒ a graceful
+    503 notice, never a crash; failures record and surface cleanly.
+-   **Realized the Agent framework:** introduces the **Agent Task** + **Artifact** resources
+    (the persisted `agent_runs` table) and the first **Plan** capability — the backbone later
+    agents reuse. *Pressures Forge → AI / the Agent framework.*
+-   **Activation:** set `ANTHROPIC_API_KEY` (wired through `app/compose.yaml`); the app is fully
+    usable without it — only live drafting is gated.
+
 ## 🔜 Proposed next — pick a set to spec
 
 Each candidate is a small, coherent feature that builds on Goals & Tasks **and** forces a
 specific Forge capability into existence — that's the wind-tunnel point (see *The Litmus
 Test*). Ordered roughly by how hard they press on the platform.
 
-**1 · Planner Agent — AI drafts the tasks** *(the first agent)*
+**1 · Planner Agent — AI drafts the tasks** — ✅ **SHIPPED (v3)** *(the first agent)*
 From a Goal's title + description, generate a proposed list of Tasks you review, edit, and
 accept before they're added.
 -   *Pressures Forge →* the **Agent framework** + a **Plan / Generate** capability + AI
     (Claude API). Introduces the **Agent Task** and **Artifact** resources.
--   *Why now:* the clearest single jump in platform capability, and it directly satisfies the
-    "naturally exercise AI agents" design constraint.
+-   *Delivered the clearest single jump in platform capability, and directly satisfied the
+    "naturally exercise AI agents" design constraint.*
 
 **2 · Timeline — your life as Events** — ✅ **SHIPPED (v2)** *(mirrors Forge's own model)*
 A chronological feed of what happened: Goal created, Task completed, status changed. The app
@@ -213,10 +227,14 @@ A Project groups Goals; its view rolls up progress across them.
 -   *Pressures Forge →* hierarchy / organization (lighter platform pressure). Introduces the
     **Project** resource. Good if you want breadth before depth.
 
-**Still open:** **#1 Planner Agent**, **#5 Habits**, **#6 Projects**.
+**Still open:** **#5 Habits**, **#6 Projects**.
 
-**Recommended next:** **#1 Planner Agent** — with the Events / time / background-jobs spine now
-shipped (#2–#4), the biggest remaining capability jump is the first **AI agent**, which
-directly satisfies the "naturally exercise AI agents" constraint and introduces the Agent Task
-+ Artifact resources. (Or #5 Habits, which cashes in the same background-jobs pressure #4 just
-exposed.)
+**Recommended next:** **#5 Habits** — it cashes in the **background-jobs / scheduler** pressure
+that Reminders (#4) exposed but couldn't yet satisfy (recurrence + streak resets need real
+recurring work), and it reuses the Events backbone for check-ins. (Or #6 Projects for breadth —
+grouping Goals — if you want a lighter, hierarchy-focused feature before more platform depth.)
+
+With the Planner (#1) shipped, a natural **v4** theme is *more of the Agent framework*: a second
+capability on the same `agent_runs` backbone (e.g. **Prioritize** or **Summarize** a goal), or
+letting the Planner **persist its runs into a visible history**. Those press on agent
+composition rather than introducing a new resource.

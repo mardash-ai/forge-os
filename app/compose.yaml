@@ -13,6 +13,9 @@ services:
     environment:
       - HOST=0.0.0.0
       - PORT=3000
+      # Activates the Planner agent. Passed through from the host; empty when
+      # unset, in which case /api/goals/{id}/plan answers 503 (never crashes).
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
     depends_on:
       - postgres
     ports:
