@@ -177,17 +177,23 @@ curl --retry 20 --retry-all-errors -sf http://localhost:3000/api/health   # wait
 ## 6. Record the platform pressure
 
 forge-os is the **wind tunnel for Forge** (see `CLAUDE.md`), so a feature isn't done until the
-pressure it put on the platform is captured. Update **`PLATFORM_CAPABILITIES.md`**: ask *what
-generic machinery did I just build inside `./app`?* Then —
+pressure it put on the platform is captured in **`PLATFORM_CAPABILITIES.md`** — the contract with
+the platform-builder agent. Ask *what generic machinery did I just build inside `./app`?* Then —
 
 - new platform-shaped code (an event log, a scheduler shim, model wiring, a secrets hack, a
-  notifications store) → add or update a 🟡 row, **citing the files**, so the extraction is real;
-- hit a wall Forge can't do → a 🔴 row;
-- consumed a Forge capability that now exists → move it to 🟢 and thin the local code.
+  notifications store) → add or update a **🟡 Local stopgap** row, **citing the files**, so the
+  extraction is real;
+- hit a wall Forge can't do at all → a **🔴 Absent** row.
 
-Keep domain logic (the app's own resources and rules) out of the ledger — only generic,
-shareable machinery earns a row. A feature that added **no** platform pressure is a signal it may
-be pure app surface rather than a wind-tunnel feature — say so.
+Keep domain logic (the app's own resources and rules) out of the ledger — only generic, shareable
+machinery earns a row. A feature that added **no** platform pressure is a signal it may be pure app
+surface rather than a wind-tunnel feature — say so. Append to the Handoff log and follow that
+file's *edit discipline* (fill only the forge-os-owned fields).
+
+> **Adopting a delivered capability is a separate trigger, not part of this loop.** When the human
+> says "capability *Cn* is ready" (status 🟢), follow *Instructions for the forge-os agent* in
+> `PLATFORM_CAPABILITIES.md`: bump the pinned image, refactor `./app` onto the capability, delete
+> the stopgap named in *Refactors OUT*, verify (incl. graceful degradation), and mark the row ✅.
 
 ## 7. Done
 
