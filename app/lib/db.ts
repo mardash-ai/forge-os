@@ -7,6 +7,7 @@ import type { Goal, GoalStatus, GoalWithProgress, GoalWithTasks, Task } from './
 import { progressPercent } from './goals';
 import type { EventData, EventType, TimelineEvent } from './timeline';
 import { bucketFor } from './schedule';
+import { computeStreak, dateOf, periodStart, type Cadence, type StreakInfo } from './habits';
 import {
   COLD_THRESHOLD_DAYS,
   activeNotifications,
@@ -87,6 +88,23 @@ function ensureSchema(): Promise<void> {
         created_at timestamptz NOT NULL DEFAULT now()
       );
       CREATE INDEX IF NOT EXISTS agent_runs_goal_id_idx ON agent_runs (goal_id);
+      -- Habits + their per-period check-ins. Streaks are derived at read time
+      -- (no scheduler yet — see PLATFORM_CAPABILITIES.md C2). One check-in per
+      -- period is enforced so a streak can't be double-counted.
+      CREATE TABLE IF NOT EXISTS habits (
+        id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+        title text NOT NULL,
+        cadence text NOT NULL DEFAULT 'daily',
+        created_at timestamptz NOT NULL DEFAULT now()
+      );
+      CREATE TABLE IF NOT EXISTS habit_checkins (
+        id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+        habit_id uuid NOT NULL REFERENCES habits(id) ON DELETE CASCADE,
+        period date NOT NULL,
+        created_at timestamptz NOT NULL DEFAULT now(),
+        UNIQUE (habit_id, period)
+      );
+      CREATE INDEX IF NOT EXISTS habit_checkins_habit_id_idx ON habit_checkins (habit_id);
     `)
     .then(() => undefined)
     .catch((err: unknown) => {
@@ -464,4 +482,107 @@ export async function recordAgentRun(input: {
     error: r.error,
     createdAt: new Date(r.created_at).toISOString(),
   };
+}
+
+// ---- habits (streaks derived at read time — no scheduler yet, see C2) ----
+
+export interface Habit {
+  id: string;
+  title: string;
+  cadence: Cadence;
+  createdAt: string;
+}
+
+/** A habit with its derived streak info for "now". */
+export interface HabitWithStreak extends Habit, StreakInfo {}
+
+interface HabitRow {
+  id: string;
+  title: string;
+  cadence: string;
+  created_at: Date;
+}
+function mapHabit(r: HabitRow): Habit {
+  return {
+    id: r.id,
+    title: r.title,
+    cadence: r.cadence === 'weekly' ? 'weekly' : 'daily',
+    createdAt: new Date(r.created_at).toISOString(),
+  };
+}
+
+export async function createHabit(title: string, cadence: Cadence): Promise<Habit> {
+  const rows = await query<HabitRow>(
+    `INSERT INTO habits (title, cadence) VALUES ($1, $2) RETURNING id, title, cadence, created_at`,
+    [title, cadence],
+  );
+  return mapHabit(rows[0]);
+}
+
+/** All habits, oldest first, each with its streak derived from check-ins as of `now`. */
+export async function listHabits(now: Date): Promise<HabitWithStreak[]> {
+  const habitRows = await query<HabitRow>(
+    `SELECT id, title, cadence, created_at FROM habits ORDER BY created_at ASC`,
+  );
+  if (habitRows.length === 0) return [];
+  const checkins = await query<{ habit_id: string; period: string }>(
+    `SELECT habit_id, period::text AS period FROM habit_checkins`,
+  );
+  const byHabit = new Map<string, string[]>();
+  for (const c of checkins) {
+    const list = byHabit.get(c.habit_id);
+    if (list) list.push(c.period);
+    else byHabit.set(c.habit_id, [c.period]);
+  }
+  const nowISO = now.toISOString();
+  return habitRows.map((row) => {
+    const habit = mapHabit(row);
+    return { ...habit, ...computeStreak(byHabit.get(row.id) ?? [], habit.cadence, nowISO) };
+  });
+}
+
+async function getHabitRow(id: string): Promise<Habit | null> {
+  if (!isUuid(id)) return null;
+  const rows = await query<HabitRow>(
+    `SELECT id, title, cadence, created_at FROM habits WHERE id = $1`,
+    [id],
+  );
+  return rows.length ? mapHabit(rows[0]) : null;
+}
+
+async function refreshHabit(habit: Habit, now: Date): Promise<HabitWithStreak> {
+  const rows = await query<{ period: string }>(
+    `SELECT period::text AS period FROM habit_checkins WHERE habit_id = $1`,
+    [habit.id],
+  );
+  return { ...habit, ...computeStreak(rows.map((r) => r.period), habit.cadence, now.toISOString()) };
+}
+
+/** Check in the current period (idempotent). Returns the fresh streak, or null if the id is unknown. */
+export async function checkInHabit(id: string, now: Date): Promise<HabitWithStreak | null> {
+  const habit = await getHabitRow(id);
+  if (!habit) return null;
+  const period = periodStart(dateOf(now.toISOString()), habit.cadence);
+  await query(
+    `INSERT INTO habit_checkins (habit_id, period) VALUES ($1, $2)
+     ON CONFLICT (habit_id, period) DO NOTHING`,
+    [id, period],
+  );
+  return refreshHabit(habit, now);
+}
+
+/** Undo the current period's check-in. Returns the fresh streak, or null if the id is unknown. */
+export async function uncheckHabit(id: string, now: Date): Promise<HabitWithStreak | null> {
+  const habit = await getHabitRow(id);
+  if (!habit) return null;
+  const period = periodStart(dateOf(now.toISOString()), habit.cadence);
+  await query(`DELETE FROM habit_checkins WHERE habit_id = $1 AND period = $2`, [id, period]);
+  return refreshHabit(habit, now);
+}
+
+/** Delete a habit (and its check-ins, via cascade). False if the id is unknown/malformed. */
+export async function deleteHabit(id: string): Promise<boolean> {
+  if (!isUuid(id)) return false;
+  const rows = await query<{ id: string }>(`DELETE FROM habits WHERE id = $1 RETURNING id`, [id]);
+  return rows.length > 0;
 }

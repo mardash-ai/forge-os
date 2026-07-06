@@ -225,9 +225,10 @@ vs. **platform-shaped** (should be lifted out):
 | Reminders (`80f583f`) | `dismissed_notifications` | `lib/notifications.ts`, cold-goal + derive logic in `lib/db.ts` | ⬆️ platform → **C4** (needs **C2/C3**) |
 | Planner Agent (`e25e631`) | `agent_runs` (+idx) | `lib/agent.ts` (SDK+key), `recordAgentRun`, `ANTHROPIC_API_KEY` wiring | ⬆️ platform → **C1** (+ **C5**) |
 
-**Metric to drive down:** `lib/db.ts` is **467 lines**, but only the `goals`/`tasks` queries are
-domain. As C1/C3/C4 extract, this number should fall toward the domain core — track it in each
-Adoption block.
+**Metric to drive down:** `lib/db.ts` is now **588 lines** (was 467 at the founding session; Habits
+added its tables + read-time streak derivation). Only the `goals`/`tasks`/`habits` domain queries
+should remain here — as C1/C3/C4 extract their tables and logic and C2 absorbs the read-time
+derivations, this falls toward the domain core. Track it in each Adoption block.
 
 **Forge today provides** build/run/provision/observe: `init · provision (+postgres/redis) · install
 · build · test · lint · dev · inspect · explain · plan · logs`, a Dockerized runtime, and **Resource
@@ -272,10 +273,16 @@ spec for the platform-builder; *Refactors OUT* is the forge-os plan; the *Platfo
 ### C2 · Scheduler / background jobs — *(the hard blocker)*
 **Status:** 🔴 Absent · **Owner:** platform-builder
 
-- **Needed by:** Reminders (v2) to *push* alerts; Habits (next) for recurrence + streak resets.
-- **Reference implementation:** none — nothing can run on a schedule, so Reminders **derives at read
-  time** ([app/lib/db.ts](app/lib/db.ts) `listActiveNotifications`/`listColdGoals`) and time is only
-  *bucketed* on read ([app/lib/schedule.ts](app/lib/schedule.ts)). This gap *is* the evidence.
+- **Needed by:** Reminders (v2) to *push* alerts; **Habits (v4, shipped this iteration on the
+  read-time stopgap)** for recurrence + streak resets.
+- **Reference implementation:** none — nothing runs on a schedule. Two features work around it by
+  deriving at read time: Reminders ([app/lib/db.ts](app/lib/db.ts) `listActiveNotifications` /
+  `listColdGoals`; time bucketed in [app/lib/schedule.ts](app/lib/schedule.ts)), and **Habits**
+  ([specs/habits/](specs/habits/)) — a streak's reset is computed on read in
+  [app/lib/habits.ts](app/lib/habits.ts) (`computeStreak`) + `listHabits`, because there is no job
+  to finalize a missed period or to warn before a streak breaks. This absence *is* the evidence, and
+  Habits makes it sharp: a streak that resets "at midnight" cannot honestly be a read-time
+  derivation forever.
 - **Required semantics:**
   - Register **recurring** work (cron-like) and **one-shot/scheduled** work; it runs while no user
     is present.
@@ -283,9 +290,10 @@ spec for the platform-builder; *Refactors OUT* is the forge-os plan; the *Platfo
   - A job can call back into the app (or a capability) to do its work and record results/events.
   - Observable: the app (or `./forge inspect`) can see scheduled/last-run/next-run state.
 - **Proposed contract:** app registers `{ schedule, target }`; Forge invokes `target` on cadence.
-- **Refactors OUT once adopted:** the read-time notification derivation becomes a **scheduled job**
-  that precomputes/pushes (C4 flips pull → push); Habits' reset becomes a **registered recurring
-  job**, not app code run opportunistically on request.
+- **Refactors OUT once adopted:** Reminders' read-time derivation becomes a **scheduled job** that
+  precomputes/pushes (C4 flips pull → push); **Habits** gains real period boundaries — a recurring
+  job finalizes each period and can fire "about to break your streak" (via C4). The pure
+  `computeStreak` rule stays; only the *finalize/notify at the boundary* moves to the scheduler.
 - **Platform delivery:** _TODO (platform-builder)_
 - **Adoption:** _TODO (forge-os)_
 

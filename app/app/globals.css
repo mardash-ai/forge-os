@@ -1333,3 +1333,242 @@ a {
     animation: none;
   }
 }
+
+/* ============ Habits — the streak as a banked fire ============ */
+/* A habit's streak reads as heat: cold when broken, hotter as it climbs the
+   ramp. The ember (leading each row) is the signature. */
+.newhabit-wrap {
+  width: 100%;
+  margin-top: 6px;
+}
+.newhabit {
+  display: flex;
+  gap: 10px;
+  align-items: stretch;
+}
+.newhabit .text-input {
+  flex: 1 1 auto;
+}
+.cadence-toggle {
+  display: flex;
+  flex: none;
+  border: 1px solid var(--iron-edge);
+  border-radius: 6px;
+  overflow: hidden;
+}
+.cadence-opt {
+  font-family: var(--mono);
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  padding: 8px 13px;
+  background: transparent;
+  border: none;
+  color: var(--ash);
+  cursor: pointer;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+.cadence-opt + .cadence-opt {
+  border-left: 1px solid var(--iron-edge);
+}
+.cadence-opt.on {
+  background: var(--iron);
+  color: var(--chalk);
+}
+.cadence-opt:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: -2px;
+}
+
+.habits {
+  list-style: none;
+  margin: 20px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.habit {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 14px 16px;
+  background: var(--forge);
+  border: 1px solid var(--iron-edge);
+  border-radius: 8px;
+}
+
+/* The ember — heat driven by streakTier(); glow scales with the tier. */
+.ember {
+  flex: none;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 50% 42%, var(--e-core), var(--e-edge));
+  box-shadow: 0 0 var(--e-glow) var(--e-halo);
+  border: 1px solid rgba(0, 0, 0, 0.4);
+  transition: box-shadow 0.3s ease, background 0.3s ease;
+}
+.ember-cold {
+  --e-core: #3d5372;
+  --e-edge: #212c3c;
+  --e-glow: 0px;
+  --e-halo: transparent;
+}
+.ember-warm {
+  --e-core: #d0692f;
+  --e-edge: #6d2f14;
+  --e-glow: 7px;
+  --e-halo: rgba(203, 83, 32, 0.5);
+}
+.ember-hot {
+  --e-core: #ef7a2b;
+  --e-edge: #8a3510;
+  --e-glow: 11px;
+  --e-halo: rgba(233, 120, 43, 0.55);
+}
+.ember-bright {
+  --e-core: #f2b64e;
+  --e-edge: #b3671b;
+  --e-glow: 15px;
+  --e-halo: rgba(233, 169, 60, 0.6);
+}
+.ember-whitehot {
+  --e-core: #fdf3d8;
+  --e-edge: #e39a3b;
+  --e-glow: 22px;
+  --e-halo: rgba(249, 224, 150, 0.72);
+}
+/* Guttering = the current period isn't stoked yet; draw the eye to it. */
+.ember.guttering {
+  animation: gutter 2.4s ease-in-out infinite;
+}
+@keyframes gutter {
+  0%,
+  100% {
+    opacity: 0.5;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+.habit-main {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+.habit-title {
+  font-family: var(--body);
+  font-size: 16px;
+  color: var(--chalk);
+}
+.habit-meta {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  color: var(--ash);
+}
+
+.habit-streak {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 64px;
+}
+.streak-num {
+  font-family: var(--display);
+  font-size: 28px;
+  font-weight: 800;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+.streak-unit {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ash);
+  margin-top: 3px;
+}
+/* streak digits take the same heat as the ember */
+.heat-cold .streak-num {
+  color: #8a9fbd;
+}
+.heat-warm .streak-num {
+  color: #d1863f;
+}
+.heat-hot .streak-num {
+  color: #ef8636;
+}
+.heat-bright .streak-num {
+  color: #edb457;
+}
+.heat-whitehot .streak-num {
+  color: #f6e6bf;
+}
+
+.stoke-btn {
+  flex: none;
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #1a0f07;
+  font-weight: 600;
+}
+.stoke-btn:hover {
+  background: #dd6027;
+  border-color: #dd6027;
+}
+.stoke-done {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.kept-lit {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #e3a63c;
+}
+.btn.undo {
+  font-size: 12px;
+  padding: 4px 6px;
+}
+.habit-remove {
+  flex: none;
+  background: transparent;
+  border: none;
+  color: #6f665c;
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 2px 7px;
+  border-radius: 4px;
+  transition: color 0.12s ease;
+}
+.habit-remove:hover {
+  color: var(--warn);
+}
+.habit-remove:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+@media (max-width: 560px) {
+  .newhabit {
+    flex-wrap: wrap;
+  }
+  .habit {
+    flex-wrap: wrap;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ember.guttering {
+    animation: none;
+  }
+}

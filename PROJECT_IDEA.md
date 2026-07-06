@@ -183,6 +183,19 @@ and accept — a human always confirms before anything is added.
 -   **Activation:** set `ANTHROPIC_API_KEY` (wired through `app/compose.yaml`); the app is fully
     usable without it — only live drafting is gated.
 
+**v4 · Habits — recurring goals with streaks.** *(`specs/habits/`)* Daily/weekly habits you check
+in each period, with a **streak** that reads as *heat* — a fire you keep lit that climbs the ramp
+as you stay consistent and goes cold the moment you miss a period.
+
+-   **Resource shipped:** **Habit** (title, cadence) + per-period **check-ins** (one per period,
+    enforced), with `streak` / `longestStreak` / `doneThisPeriod` derived live. Survives restart.
+-   **What a user can do:** start a daily/weekly habit, *stoke* it each period (idempotent), undo a
+    mis-tap, watch the streak grow or reset, remove a habit.
+-   **Pressured Forge →** the sharpest evidence yet for **C2 · Scheduler / background jobs**
+    (`PLATFORM_CAPABILITIES.md`): with no scheduler, the reset is *derived at read time* — correct
+    on the next read, but nothing fires at the period boundary. Adopting C2 later gives it real
+    boundaries + "about to break your streak" pushes.
+
 ## 🔜 Proposed next — pick a set to spec
 
 Each candidate is a small, coherent feature that builds on Goals & Tasks **and** forces a
@@ -217,24 +230,22 @@ Surface due / overdue tasks and goals gone "cold" as notifications.
     workflow composition** — Forge needs a way to run recurring work. Introduces the
     **Notification** resource. *(Builds on #3 dates and #2 events.)*
 
-**5 · Habits — recurring goals with streaks**
+**5 · Habits — recurring goals with streaks** — ✅ **SHIPPED (v4)**
 Habits that recur daily / weekly, reset on cadence, and track a streak.
--   *Pressures Forge →* **Schedule + background jobs** (the reset) and **Events**
-    (check-ins). Introduces the **Habit** resource and recurrence.
+-   *Pressured Forge →* **Schedule + background jobs** (the reset) — shipped on the read-time
+    stopgap, making **C2** undeniable. Introduced the **Habit** resource and recurrence.
 
 **6 · Projects — group related Goals**
 A Project groups Goals; its view rolls up progress across them.
 -   *Pressures Forge →* hierarchy / organization (lighter platform pressure). Introduces the
     **Project** resource. Good if you want breadth before depth.
 
-**Still open:** **#5 Habits**, **#6 Projects**.
+**Still open:** **#6 Projects**.
 
-**Recommended next:** **#5 Habits** — it cashes in the **background-jobs / scheduler** pressure
-that Reminders (#4) exposed but couldn't yet satisfy (recurrence + streak resets need real
-recurring work), and it reuses the Events backbone for check-ins. (Or #6 Projects for breadth —
-grouping Goals — if you want a lighter, hierarchy-focused feature before more platform depth.)
-
-With the Planner (#1) shipped, a natural **v4** theme is *more of the Agent framework*: a second
-capability on the same `agent_runs` backbone (e.g. **Prioritize** or **Summarize** a goal), or
-letting the Planner **persist its runs into a visible history**. Those press on agent
-composition rather than introducing a new resource.
+**Recommended next:** the biggest lever is no longer a new app feature but **adopting platform
+capabilities as they land** — the app's job now is to *simplify onto Forge* (see
+`PLATFORM_CAPABILITIES.md`, and the two-agent loop). Highest priority there: **C2 · Scheduler**
+(which Habits just made undeniable) and **C5 · Secrets**. For pure app breadth in the meantime,
+**#6 Projects** (grouping Goals, lighter platform pressure) is the remaining candidate. A future
+*more-agents* theme (Prioritize / Summarize on the `agent_runs` backbone) also stays open, and is
+the natural driver for adopting **C1 · Agent runtime**.
