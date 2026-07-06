@@ -14,6 +14,21 @@ routed to Forge**, instead of being quietly absorbed as app-local code.
 > **forge-os agent** (builds features here and simplifies `./app` onto new capabilities). They
 > never talk directly — a **human relays** between them. Read *How this file works* before editing.
 
+> **✍️ Write baton — `Holder: forge-os`.** Only the named Holder may edit this file; the other
+> agent waits for the human to pass the baton. This is the single-writer lock over the human relay
+> (the two agents live in separate repos, so this token — not git — is what serializes writes).
+> Rules:
+> - **Hold before you write.** If you are not the Holder, do not edit — ask the human to pass you
+>   the baton first. The human sets the Holder when relaying between agents.
+> - **Re-read on take.** The instant the baton becomes yours, re-read this file fresh from disk;
+>   never edit from an earlier/cached copy — state may have moved while it wasn't your turn.
+> - **Patch, don't regenerate.** Make one logical change in place; never rewrite the whole file.
+>   Commit to git (never a shared unversioned copy) so any residual race is a visible conflict, not
+>   silent loss.
+> - **Pass it or free it.** When your turn is done, set `Holder:` to the other agent (if handing
+>   off) or `free` (if nothing is pending), and add a Handoff-log line noting the pass.
+> - A delivery made before this baton existed is grandfathered; from here on, the baton governs.
+
 ---
 
 ## How this file works — the two-agent loop
