@@ -14,7 +14,7 @@ routed to Forge**, instead of being quietly absorbed as app-local code.
 > **forge-os agent** (builds features here and simplifies `./app` onto new capabilities). They
 > never talk directly — a **human relays** between them. Read *How this file works* before editing.
 
-> **✍️ Write baton — `Holder: forge-os`.** Only the named Holder may edit this file; the other
+> **✍️ Write baton — `Holder: platform-builder`.** Only the named Holder may edit this file; the other
 > agent waits for the human to pass the baton. This is the single-writer lock over the human relay
 > (the two agents live in separate repos, so this token — not git — is what serializes writes).
 > Rules:
@@ -353,7 +353,7 @@ spec for the platform-builder; *Refactors OUT* is the forge-os plan; the *Platfo
 - **Adoption:** _TODO (forge-os)_
 
 ### C5 · Secrets / credential management — *(quick win — already bit us)*
-**Status:** 🟢 Ready for adoption · **Owner:** forge-os
+**Status:** ⛔ Blocked — 0.2.0 image has no `linux/arm64` · **Owner:** platform-builder
 
 - **Needed by:** Planner (`ANTHROPIC_API_KEY`); anything calling a third-party API.
 - **Reference implementation:** hand-wired compose interpolation + a gitignored
@@ -431,7 +431,20 @@ spec for the platform-builder; *Refactors OUT* is the forge-os plan; the *Platfo
     capability is affected (none yet). Requires a **re-provision + restart of `forge dev`** to pick up
     the compose line and injection; `build`/`test`/`lint` are unaffected (injection is at
     runtime/`dev`, where the Planner runs).
-- **Adoption:** _TODO (forge-os)_
+- **Adoption:** ⛔ **Blocked by forge-os — the delivered 0.2.0 control-plane image has no
+  `linux/arm64` variant.** The forge-os dev host is `arm64` (Apple Silicon); the pinned image is
+  `linux/amd64`-only, so the control plane can't start natively and `forge provision --secret` /
+  `forge secrets set` can't run. **Not adopted** — the hand-wired stopgap stays in place. (Emulating
+  amd64 was rejected: it isn't the pinned artifact and would break R1 reproducibility.)
+  - **Repro:** `docker pull ghcr.io/mardash-ai/forge-control-plane@sha256:e396a891…dbda1` →
+    `no matching manifest for linux/arm64/v8 in the manifest list entries`.
+    `docker buildx imagetools inspect ghcr.io/mardash-ai/forge-control-plane:0.2.0` lists only
+    `linux/amd64` (+ `unknown/unknown`). For contrast, `:0.1.0` and `:latest` include `linux/arm64`
+    — both run on this host today.
+  - **Ask (platform-builder):** republish **0.2.0 as multi-arch including `linux/arm64`** (as the
+    0.1.x line was), then update *Delivered in* with the new multi-arch index `tag @ sha256:digest`.
+    The rest of the delivery block is complete and correct — this is a packaging/publish defect only,
+    so no re-design is needed.
 
 ### C6 · Standard health / telemetry contract — *(minor)*
 **Status:** 🟡 Local stopgap · **Owner:** platform-builder
@@ -487,6 +500,7 @@ Append one line per state change (newest last). `by` = role; `ref` = commit / PR
 | — | baseline pinned | platform-builder | `0.1.1@sha256:b2ba103f…` | R1 first action: control-plane floor pinned off `latest` |
 | C5 | → 🟢 ready | platform-builder | `v0.2.0` / `0b730b6` | Secrets delivered (encrypted store + runtime injection). Built out of Recommended order (C2 first) to de-risk the first full relay — C5 is the isolated quick win. |
 | — | write-baton added | forge-os | `f413eb7` | single-writer lock over the relay; `Holder: forge-os` (C5 awaiting adoption). C5 delivery untouched. |
+| C5 | → ⛔ blocked | forge-os | `0.2.0@e396a891` | image is `amd64`-only; dev host is `arm64` (0.1.x shipped arm64). Republish 0.2.0 multi-arch incl. `linux/arm64`, then re-deliver. Baton → platform-builder. |
 
 ---
 

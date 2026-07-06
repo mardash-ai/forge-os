@@ -18,6 +18,13 @@ new backwards-compatible features, **PATCH** for backwards-compatible fixes.
 - Write baton (single-writer lock) at the top of `PLATFORM_CAPABILITIES.md` — serializes edits to
   the two-agent capability ledger across the human relay, guarding against stale-overwrite.
 
+### Changed
+
+- C5 (Secrets) adoption attempted and **bounced to ⛔ blocked**: the delivered `0.2.0`
+  control-plane image ships `linux/amd64` only, but the dev host is `arm64`, so the control plane
+  can't run. Returned to the platform-builder for a multi-arch republish. No app change — the
+  existing secret-handling stopgap stays in place.
+
 ---
 
 _Started mid-project: earlier work (the Goals & Tasks core and the Timeline → Time & Today →
