@@ -22,7 +22,9 @@ services:
       # Next.js standalone must bind 0.0.0.0, else Traefik gets a 502 (it would bind
       # the container-id hostname → internal IP only). Set in the image too.
       - HOSTNAME=0.0.0.0
-      - DATABASE_URL=${DATABASE_URL:-postgres://forge:forge@postgres:5432/forge_os}
+      # Derived from POSTGRES_PASSWORD so the app and Postgres can never disagree
+      # (a mismatched DATABASE_URL is a classic 28P01 auth failure). Single source of truth.
+      - DATABASE_URL=postgres://forge:${POSTGRES_PASSWORD:-forge}@postgres:5432/forge_os
       # Deploy-time secret delivery — empty degrades gracefully (AI drafting 503s,
       # app stays up). In real prod, source from your platform's secret store.
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
