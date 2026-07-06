@@ -452,9 +452,10 @@ spec for the platform-builder; *Refactors OUT* is the forge-os plan; the *Platfo
   - **Metrics** — `lib/db.ts` unchanged (C5 is runtime/config, not DB); removed the `app/.env`
     secret convention and the hand-wired compose plumbing.
   - **Notes** — the delivery ships `secrets set`/`list` but **no `secrets unset`** (fine — not in the
-    Required semantics; would enable a live "revoke → 503" demo later). Also: `forge provision`
-    regenerates `app/compose.yaml` and resets the Postgres host-port remap to `5432` — re-apply
-    `5433:5432` after any re-provision (local-only, to dodge a host-5432 conflict).
+    Required semantics; would enable a live "revoke → 503" demo later) — now tracked as **P2** under
+    *Platform issues & requests*. Also: `forge provision` regenerates `app/compose.yaml`, drops
+    services you don't re-specify, and resets the Postgres host-port remap to `5432` — tracked as
+    **P1**; re-apply `5433:5432` and re-pass all infra flags after any re-provision.
   - **Adopted in** — see the *Runtime & version* table (C5) and the Handoff log.
 
 ### C6 · Standard health / telemetry contract — *(minor)*
@@ -495,6 +496,38 @@ Build these when a feature *needs* them, not because the roadmap lists them:
 - **Search / indexing** — flagged in [PROJECT_IDEA.md](PROJECT_IDEA.md); no feature demands it yet.
 - **Offline sync · mobile shared resources · OAuth federation** — future; named in the project idea's
   pressure list, not yet exercised.
+
+---
+
+## Platform issues & requests (for the platform-builder)
+
+**Not** new capabilities — defects / UX gaps in **existing** Forge behavior that forge-os hit while
+adopting. The platform-builder owns the fix; track these alongside capability work.
+
+### P1 · `provision` is destructive (replace-from-flags, not additive) — 🔴 open
+- **Hit during:** C5 adoption. `forge provision --app forge-os --secret ANTHROPIC_API_KEY` (without
+  `--with-postgres`) **silently dropped the Postgres service** from `app/compose.yaml`; only a second
+  provision with `--with-postgres --secret …` restored it. It also **resets** hand-applied host-port
+  remaps (e.g. `5433:5432`).
+- **Why it's dangerous:** `provision` regenerates `app/compose.yaml` from *only* the flags on that
+  call, with no warning. Worst case is **data loss** (drop a volume-backed service, then a `down -v`
+  / prune); common case is a suddenly-broken app. It's reachable from documented guidance too — the
+  `provision-app` skill's recovery step used to advise a **flag-less** re-provision (now fixed in
+  forge-os + forge-starter, but the platform behavior remains the root cause).
+- **Also:** `app/forge.app.json` records scaffold metadata but **not** the desired infra
+  (postgres/redis/secrets), so there's no persistent source of truth for provision to converge from.
+- **Ask:** make `provision` **idempotent** — read the full desired environment
+  (postgres/redis/secrets, ideally custom host ports) from `app/forge.app.json` and *converge*;
+  and/or **preserve** existing services unless explicitly removed; and/or **refuse** to drop a
+  service that owns a data volume without an explicit `--force`. Persist declared infra in
+  `forge.app.json` so a re-provision needs no flags.
+
+### P2 · Add `secrets unset` (C5 follow-up) — 🟡 minor
+- **Context:** C5 shipped `secrets set` / `list` but no way to **remove/revoke** a secret. Not in the
+  C5 Required semantics, so not a blocker — but without it there's no live "revoke → 503" path and no
+  clean rotate-by-removing.
+- **Ask:** add `forge secrets unset --app <app> --name <NAME>` (idempotent; `404` unknown app; never
+  logs the value). Lets forge-os demonstrate graceful degradation live and supports clean rotation.
 
 ---
 

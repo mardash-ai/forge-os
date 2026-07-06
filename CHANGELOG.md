@@ -36,6 +36,12 @@ new backwards-compatible features, **PATCH** for backwards-compatible fixes.
 
 - C5 was briefly blocked because the delivered `0.2.0` image was `amd64`-only on an `arm64` host;
   the platform-builder republished it multi-arch, unblocking adoption.
+- **Removed dangerous guidance in the `provision-app` skill** (and mirrored the fix to
+  forge-starter): it advised a **flag-less** `forge provision` to fix a build error, which silently
+  drops Postgres/secrets since provision regenerates compose from the flags passed. It now warns that
+  `provision` is replace-from-flags and to re-pass every infra flag. Filed the underlying platform
+  behavior as **P1** (make `provision` idempotent) and requested **P2** (`secrets unset`) in
+  `PLATFORM_CAPABILITIES.md`.
 
 ---
 
