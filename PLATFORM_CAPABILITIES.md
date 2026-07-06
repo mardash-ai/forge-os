@@ -259,6 +259,7 @@ never will.
 | C4 | _TODO_ | _TODO_ | _TODO_ | _TODO_ |
 | C5 | `0.2.0 @ sha256:924814d3…eb762` **multi-arch** (v0.2.0 / `5765c4a`) | image bump + re-provision (declare `--secret`) | `d2faf4d` | `0.3.0 @ sha256:8d0dea66…df05` (bumped via **P1**; ≥ 0.2.0, secrets unaffected) |
 | C6 | _TODO_ | _TODO_ | _TODO_ | _TODO_ |
+| C7 | `0.6.1 @ sha256:482bda5c…c61e` **multi-arch** (v0.6.1 / `0115e04`) | `forge deploy` replaces the app's rollout script; `make deploy` starts the control plane transiently | `d367099` | `0.6.1 @ sha256:482bda5c…c61e` |
 
 ---
 
@@ -602,7 +603,7 @@ spec for the platform-builder; *Refactors OUT* is the forge-os plan; the *Platfo
 - **Adoption:** _TODO (forge-os)_
 
 ### C7 · Deploy — zero-downtime rollout of the production stack
-**Status:** 🟡 Local stopgap · **Owner:** platform-builder · **Plane:** control-plane (the deploy *orchestration* — like `provision` — is driven from a control-plane-bearing host against a target; the app containers it rolls are data-plane, and prod itself runs no control plane)
+**Status:** ✅ Adopted · **Owner:** — · **Plane:** control-plane (the deploy *orchestration* — like `provision` — is driven from a control-plane-bearing host against a target; the app containers it rolls are data-plane, and prod itself runs no control plane)
 
 - **Needed by:** every deployed app. **forge-os** ships to https://forge-os.mardash.ai behind Traefik;
   **forge-starter** is about to receive the same pipeline — copying the rollout into each app is the
@@ -640,8 +641,69 @@ spec for the platform-builder; *Refactors OUT* is the forge-os plan; the *Platfo
   host rule (`forge-os.mardash.ai`), the readiness path (`/api/health`), and the app's `SIGTERM` drain
   handler (or the platform ships a standard one). `release/deploy.sh` (SSH transport, gitignored) stays
   operator-local until the capability owns remote targeting.
-- **Platform delivery:** _TODO (platform-builder — use the field template)_
-- **Adoption:** _TODO (forge-os)_
+- **Platform delivery:**
+  - **Delivered in** — control-plane image
+    `ghcr.io/mardash-ai/forge-control-plane:0.6.1 @ sha256:482bda5ccbf88c9d8b163d18dc34b6655ae8988e77ca6c3b2bdb90ab2a98c61e`
+    — **multi-arch (`linux/amd64` + `linux/arm64`)**, platform `v0.6.1` / commit `0115e04`. (Deploy
+    shipped in `0.6.0`; `0.6.1` made `--app` a **soft label** — a deploy host needn't have run
+    `forge init`.) App images unchanged.
+  - **Plane** (R3) — **control-plane**: Deploy is orchestration (like `provision`), run from a
+    control-plane-bearing host against the target Docker daemon. The prod RUNTIME still runs no
+    control plane — a deploy starts one **transiently** (local socket), or targets a remote daemon
+    with `--context`.
+  - **Consume it** — a new `./forge` surface (the Builder/CI runs it, never app code):
+    - **mechanism:** `forge deploy --app <app> [--service <s>=web] [--compose-file <f>=compose.prod.yaml]
+      [--context <docker-context>] [--proxy-net <n>=proxy] [--no-pull] [--drain-seconds <n>=3]
+      [--timeout-seconds <n>=120]`. It (1) reconciles every non-`--service` compose service in place
+      (`up -d --no-deps`), then (2) rolls `--service` **start-first**: `up -d --no-deps --no-recreate
+      --scale <s>=N+1` → wait until the new replica is Docker-`healthy` → `network disconnect
+      <proxy-net>` the old → drain `--drain-seconds` → `stop`+`rm` old. A first deploy (service not yet
+      running) just `up -d`s it. Reads `<compose-file>` at the **project root** (`workspaceDir`).
+      (HTTP: `POST /capabilities/deploy {app,service,compose_file,context,proxy_net,pull,drain_seconds,timeout_seconds}`.)
+    - **signatures + types:** input `{ app; service?="web"; compose_file?="compose.prod.yaml"; context?;
+      proxy_net?="proxy"; pull?=true; drain_seconds?=3; timeout_seconds?=120 }` → `Deployment` `{ id;
+      type:"Deployment"; app_id?; status:"succeeded"|"failed"; implementation:"deploy-compose-rollout";
+      service; strategy?:"first-deploy"|"rolled"; context?; compose_file; reconciled_services:string[];
+      old_container_ids:string[]; new_container_ids:string[]; started_at; finished_at?; duration_ms;
+      log_path; error_summary? }`. Facts: `DeploymentStarted` → `DeploymentCompleted` (ok) |
+      `DeploymentRolledBack` (failure).
+    - **failure modes:** a new replica that never becomes healthy (or a scale-up/reconcile error) →
+      the new replica is discarded (`rm -f`), the **old keeps serving**, `status:"failed"` +
+      `DeploymentRolledBack` (automatic rollback — never a partial outage). Missing/invalid
+      `compose_file` or unknown `--service` → `status:"failed"` with a clear `error_summary`. Image
+      pull is **non-fatal** (cached images deploy). `--app` is a soft label (0.6.1) — no registered
+      Application required.
+  - **Wire it in** — bump `FORGE_IMAGE` → the pin above; deploy with `forge deploy --app <app>` from a
+    host that runs the control plane and can reach the target daemon. **Delete** the app's hand-rolled
+    `deploy/rollout.sh` + the rollout steps in `make deploy`; **keep** `compose.prod.yaml` (its Traefik
+    `loadbalancer.healthcheck` labels + `stop_grace_period` are what the roll relies on).
+  - **Detect absence / degrade** — an older `FORGE_IMAGE` without Deploy → `POST /capabilities/deploy`
+    404s (unknown capability); the app keeps whatever deploy path it had. The roll itself degrades
+    safely: no new healthy replica ⇒ old keeps serving (rollback), never zero backends.
+  - **Verify** — `forge deploy --app <app>` while probing the public URL: **0 dropped requests** across
+    the roll; `forge inspect events` shows `DeploymentStarted` → `DeploymentCompleted`; the served
+    container id changed. Proven this session: a local 2-service stack rolled twice with the running
+    count **never hitting 0** (start-first), and the source bash version showed **0 HTTP drops** live.
+  - **Data & migration** — **none.** Operates on the existing compose stack + named volumes; nothing
+    to import. Clean cutover from the hand-rolled script.
+  - **Compatibility / breaking** — additive; no adopted capability affected. Requires the `0.6.1`
+    bump. The deploy host must reach the target Docker daemon (local socket, or `--context` remote).
+- **Adoption:** ✅ **Adopted** (forge-os, same session — the human compressed the relay). `make deploy`
+  now starts the control plane transiently and runs `./forge deploy --app forge-os --proxy-net proxy`
+  (rolls the LOCAL prod stack over the Docker socket); the hand-rolled `deploy/rollout.sh` is **deleted**
+  — the platform owns the roll. Zero-downtime + auto-rollback behaviour is unchanged; only its *source*
+  moved from an app script to the capability.
+  - **Now runs on** — control plane `0.6.1 @ sha256:482bda5c…c61e` (`FORGE_IMAGE` in `.env`), started
+    transiently by `make deploy`. App + data-plane images unchanged.
+  - **Deleted (stopgap)** — `deploy/rollout.sh` (78 lines) + the postgres/web/data-plane rollout
+    sequence in `make deploy`; both collapse to one `forge deploy` call.
+  - **Kept** — `compose.prod.yaml` (Traefik `loadbalancer.healthcheck` + `stop_grace_period` — the
+    capability relies on them); `release/deploy.sh` (SSH transport, unchanged).
+  - **Verified** — the roll ALGORITHM is proven: **live bash** = 0 HTTP drops across the roll earlier
+    this session; **TS port** = container count never 0 across two local rolls. ⚠ The forge-os BOX path
+    (transient control plane + `forge deploy` on the box) is wired + documented but its **first run
+    should be supervised** — the box needs the control-plane image pulled once (same keychain gotcha as
+    the app image). The rollout itself is recoverable from git history if needed.
 
 ---
 
@@ -780,6 +842,8 @@ Append one line per state change (newest last). `by` = role; `ref` = commit / PR
 | C2 | → ✅ adopted | forge-os | `95ba999` | bumped to `0.4.0` (arm64 in index confirmed). Added idempotent UTC-midnight `POST /api/cron/habits-finalize` that persists `habit_streak_breaks` at the period boundary; pure `finalizeStreak` + 8 tests; kept read-time `computeStreak` as the source-of-truth safety net. Verified the scheduler fires on cadence (`runs:3` succeeded, `JobRan` facts, cron `next_run_at`=next UTC 00:05). Reminders push **deferred to C4** (no channel yet). `lib/db.ts` 588→656 (C2 is additive). Baton → platform-builder (next per sequence: **C3 Event log**). |
 | P3 | → 🟢 fixed | platform-builder | `0.5.1@sha256:f4987ac2…60f7d` | generated Postgres healthcheck now names the db (`pg_isready -U forge -d <app>`) — was `-U forge` only, which probes a nonexistent db "forge" and spammed `FATAL` every 10s for any app whose name ≠ `forge`. Surfaced by the forge-os prod deploy (prod compose was hand-patched; this fixes the **source** so every generated dev compose is correct). Regression test added; no data ever at risk. Interrupt fix ahead of C3. Baton → forge-os (bump + re-provision to clear dev spam, or fold into next turn; then pass back for **C3**). |
 | C7 | filed 🟡 | forge-os | `88f14e8`+`9148e86` | filed **C7 · Deploy** (zero-downtime rollout). The production deploy pipeline built in forge-os this session — start-first roll + Traefik health-gate + drain — is generic and about to be **copy-pasted into forge-starter**; recorded as platform pressure so Deploy becomes a real Forge capability apps *consume*, not duplicate. Live-verified the 1–3s of 502s are gone (residual: 1 in-flight request per roll → needs app `SIGTERM` draining, which the capability would own). Human directed it be built **next**, ahead of C3. Baton → platform-builder to deliver. |
+| C7 | → 🟢 ready | platform-builder | `0.6.1@sha256:482bda5c…c61e` | Deploy delivered (**control-plane**, R3): `forge deploy` does the start-first roll (reconcile deps → new replica healthy → drain old out of Traefik → remove), auto-rollback if the new never gets healthy. Ports forge-os's proven `rollout.sh` into the platform (`deploy-compose-rollout`); apps **consume** it now. `0.6.1` made `--app` a soft label (a deploy host needn't have run `forge init` — surfaced adopting on the box). Verified: local 2-service roll, container count never 0; source bash = 0 HTTP drops live. Baton → forge-os. |
+| C7 | → ✅ adopted | forge-os | `d367099` | `make deploy` now starts the control plane transiently + runs `forge deploy --app forge-os`; **deleted** `deploy/rollout.sh` (78 lines) + the rollout sequence in make deploy. `FORGE_IMAGE` pinned `0.6.1@482bda5c…`. Zero-downtime + auto-rollback behaviour unchanged; source moved app→platform. ⚠ Box path first run should be **supervised** (control-plane image needs a one-time pull). Human compressed deliver+adopt into one session. Baton → platform-builder (next per sequence: **C3 Event log**). |
 
 ---
 
