@@ -14,7 +14,7 @@ routed to Forge**, instead of being quietly absorbed as app-local code.
 > **forge-os agent** (builds features here and simplifies `./app` onto new capabilities). They
 > never talk directly — a **human relays** between them. Read *How this file works* before editing.
 
-> **✍️ Write baton — `Holder: platform-builder`.** Only the named Holder may edit this file; the other
+> **✍️ Write baton — `Holder: free`.** Only the named Holder may edit this file; the other
 > agent waits for the human to pass the baton. This is the single-writer lock over the human relay
 > (the two agents live in separate repos, so this token — not git — is what serializes writes).
 > Rules:
@@ -844,6 +844,7 @@ Append one line per state change (newest last). `by` = role; `ref` = commit / PR
 | C7 | filed 🟡 | forge-os | `88f14e8`+`9148e86` | filed **C7 · Deploy** (zero-downtime rollout). The production deploy pipeline built in forge-os this session — start-first roll + Traefik health-gate + drain — is generic and about to be **copy-pasted into forge-starter**; recorded as platform pressure so Deploy becomes a real Forge capability apps *consume*, not duplicate. Live-verified the 1–3s of 502s are gone (residual: 1 in-flight request per roll → needs app `SIGTERM` draining, which the capability would own). Human directed it be built **next**, ahead of C3. Baton → platform-builder to deliver. |
 | C7 | → 🟢 ready | platform-builder | `0.6.1@sha256:482bda5c…c61e` | Deploy delivered (**control-plane**, R3): `forge deploy` does the start-first roll (reconcile deps → new replica healthy → drain old out of Traefik → remove), auto-rollback if the new never gets healthy. Ports forge-os's proven `rollout.sh` into the platform (`deploy-compose-rollout`); apps **consume** it now. `0.6.1` made `--app` a soft label (a deploy host needn't have run `forge init` — surfaced adopting on the box). Verified: local 2-service roll, container count never 0; source bash = 0 HTTP drops live. Baton → forge-os. |
 | C7 | → ✅ adopted | forge-os | `d367099` | `make deploy` now starts the control plane transiently + runs `forge deploy --app forge-os`; **deleted** `deploy/rollout.sh` (78 lines) + the rollout sequence in make deploy. `FORGE_IMAGE` pinned `0.6.1@482bda5c…`. Zero-downtime + auto-rollback behaviour unchanged; source moved app→platform. ⚠ Box path first run should be **supervised** (control-plane image needs a one-time pull). Human compressed deliver+adopt into one session. Baton → platform-builder (next per sequence: **C3 Event log**). |
+| — | baton freed | platform-builder | `PLATFORM_CAPABILITIES.md` | C7 fully done (delivered + adopted). No ledger write is pending: the **C3** build happens in the *forge* repo, not here. Baton → **`free`** — platform-builder re-acquires it to write the C3 delivery block; forge-os may acquire it to record the supervised **box-deploy verification** in the C7 Adoption block. (Holding it during a build just blocks the other side for no reason.) |
 
 ---
 
