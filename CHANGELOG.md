@@ -7,6 +7,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0] — 2026-07-07
+
+### Changed
+
+- **Adopt the standard health/telemetry contract (C6) — `/api/health` reports real readiness now.**
+  Replace the bespoke always-`ok` payload with the platform's standard schema
+  (`{ status, service, time, checks: [{ name, status, detail? }] }`) and its HTTP-code convention:
+  **200** for `ok`/`degraded`, **503** when a *required* check is `unavailable`. `/api/health` now
+  declares `service: 'forge-os'` plus one **required** `db` check (a `SELECT 1` round-trip to
+  Postgres via `lib/db.ts`), so the endpoint is genuine liveness+readiness rather than a
+  liveness-only lie. The route stays `force-dynamic` / no-cache and collapses to ~8 lines; the
+  aggregation + status/code rollup live in `lib/health.ts` (`buildHealth`). `forge inspect health
+  --app forge-os` renders the overall status + per-check rollup and confirms the payload `conforms`
+  to the contract.
+- **Bump the control-plane default to `forge-control-plane:0.12.0@sha256:d5943450…`** (`compose.yaml`,
+  multi-arch amd64+arm64; supersedes `0.11.1`, which it subsumes) — `0.12.0` ships the C6 `inspect
+  health` observer. No data-plane change (C6 ships no data-plane code; the probe is the app's own
+  route). Refresh the `DEPLOY.md` default control-plane image note to match.
+
+### Added
+
+- **`buildHealth(service, checks)` in `lib/health.ts`** — the vendored C6 contract helper: runs the
+  opaque check thunks, maps each to `ok`/`unavailable` (a thrown error's message becomes `detail`),
+  rolls up to `ok`/`degraded`/`unavailable`, and picks `200`/`503`. A failing **non-required** check
+  degrades (200, flagged) rather than failing the service; `checks: []` is liveness-only.
+- **`pingDb()` in `lib/db.ts`** — a cheap Postgres readiness probe (`SELECT 1`, deliberately skips
+  the schema bootstrap) that throws when the database is unreachable; wired as the `/api/health`
+  required `db` check.
+
+### Removed
+
+- **The bespoke `HealthPayload` / `healthPayload()` in `lib/health.ts`** — the always-`ok`,
+  liveness-only payload that never checked anything. `tests/health.test.ts` now exercises
+  `buildHealth` (ok/200, required-fail/503, non-required-degrade/200, liveness-only/empty-checks).
+
 ## [0.3.1] — 2026-07-07
 
 ### Fixed
@@ -213,7 +248,8 @@ _This changelog started mid-project: the Goals & Tasks core and the Timeline →
 Reminders → Planner Agent → Habits features predate it; see `PROJECT_IDEA.md`'s roadmap and the git
 history for that record._
 
-[Unreleased]: https://github.com/mardash-ai/forge-os/compare/v0.3.1...HEAD
+[Unreleased]: https://github.com/mardash-ai/forge-os/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/mardash-ai/forge-os/compare/v0.3.1...v0.4.0
 [0.3.1]: https://github.com/mardash-ai/forge-os/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/mardash-ai/forge-os/compare/v0.2.1...v0.3.0
 [0.2.1]: https://github.com/mardash-ai/forge-os/compare/v0.2.0...v0.2.1

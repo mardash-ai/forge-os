@@ -78,7 +78,7 @@ multi-arch (`amd64` + `arm64`).
    POSTGRES_PASSWORD=<a real password>
    ANTHROPIC_API_KEY=<your key, or empty>
    FORGE_SECRETS_KEY=<a strong, STABLE value — see notes AND "Known gaps" below>
-   # FORGE_IMAGE (control-plane) is optional — it defaults to 0.11.1 in compose.yaml;
+   # FORGE_IMAGE (control-plane) is optional — it defaults to 0.12.0 in compose.yaml;
    # override only to pin a different control-plane image for `make deploy`.
    ```
    To change the deployed image digests, re-run `forge productionize` (do NOT hand-edit the compose).

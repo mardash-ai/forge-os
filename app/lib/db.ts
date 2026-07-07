@@ -111,6 +111,15 @@ async function query<T>(text: string, params: unknown[] = []): Promise<T[]> {
   return result.rows as T[];
 }
 
+/**
+ * Readiness probe for the health contract (C6): a trivial round-trip to Postgres.
+ * Deliberately skips `ensureSchema` — it's a connectivity check, not a bootstrap,
+ * so it stays cheap and fails fast (throws) when the database is unreachable.
+ */
+export async function pingDb(): Promise<void> {
+  await getPool().query('SELECT 1');
+}
+
 interface GoalRow {
   id: string;
   title: string;
