@@ -752,6 +752,37 @@ spec for the platform-builder; *Refactors OUT* is the forge-os plan; the *Platfo
     (transient control plane + `forge deploy` on the box) was **verified by the human on the box
     (2026-07-06)** — it deploys end-to-end; the one-time control-plane image pull (keychain) is done.
 
+### C8 · Productionize — generate the production artifacts (app Dockerfile + `compose.prod.yaml`)
+**Status:** 🟡 Local stopgap · **Owner:** platform-builder · **Plane:** control-plane (generation is orchestration — the way `provision` generates the dev `compose.yaml`)
+
+- **Needed by:** every app that deploys (forge-os today; the forge-starter template). Productionizing is
+  currently a **manual copy**: the Builder copies `deploy/app-image/{Dockerfile,.dockerignore}` into
+  `app/` and sets `output:'standalone'` in `app/next.config.mjs`, and `compose.prod.yaml` is
+  hand-authored. A forgotten step silently breaks the prod build (CI skips until `app/Dockerfile`
+  exists). Surfaced reconciling the forge-os-has-`app/Dockerfile` vs forge-starter-stages-it-in-`deploy/`
+  discrepancy.
+- **Reference implementation (behavioral spec):** the hand-authored prod artifacts — forge-os
+  [app/Dockerfile](app/Dockerfile) (Next.js standalone multi-stage), `app/next.config.mjs`
+  `output:'standalone'`, and [compose.prod.yaml](compose.prod.yaml) (Traefik-fronted `web` +
+  data-plane sidecar + postgres, health-gated for the C7 roll); forge-starter stages the Dockerfile at
+  `deploy/app-image/` and documents the copy in `DEPLOY.md`.
+- **Required semantics (platform must satisfy):**
+  - Generate the app's **production image build** (a standalone Next.js `Dockerfile` + `.dockerignore`
+    + the `output:'standalone'` config) so CI builds a slim **web** image — no build tooling on the host.
+  - Generate **`compose.prod.yaml`**: the Traefik ingress labels (host rule + the `loadbalancer.healthcheck`
+    gating C7's roll relies on), `stop_grace_period`, the data-plane sidecar wiring, and the DB — derived
+    from the app's declared **`infra`** (reuse the block `provision` already persists, from **P1**) + a `--host`.
+  - **Idempotent + convergent** (like `provision`): re-running updates in place, never clobbers hand-edits
+    it doesn't own; pins images by digest (R1).
+- **Proposed contract (platform may refine):** `forge provision --prod` (or `forge productionize`) →
+  emits `app/Dockerfile`, `app/.dockerignore`, `compose.prod.yaml`, `.env.prod.example` from the
+  persisted `infra` + `--host <domain>`. **Pairs with C7 Deploy** (which then rolls what this generates).
+- **Refactors OUT once adopted:** delete the hand-authored `app/Dockerfile` / `compose.prod.yaml` and
+  forge-starter's `deploy/app-image/` template + the manual `DEPLOY.md` copy steps — they become
+  generated. **Stays (domain / intent):** `output:'standalone'`, the host rule, the readiness path.
+- **Platform delivery:** _TODO (platform-builder)_
+- **Adoption:** _TODO (forge-os)_
+
 ---
 
 ## Recommended sequence
@@ -767,6 +798,9 @@ Build in this order unless dependencies dictate otherwise:
 7. **C7 Deploy** — added late (the zero-downtime rollout built in forge-os this session). **The human
    has directed it be built next, ahead of C3**, to stop the deploy pipeline being copy-pasted per app
    (forge-starter is about to inherit it). A deliberate reorder — recorded here like P1 was.
+8. **C8 Productionize** — pairs with C7 Deploy: generate the prod artifacts (app standalone Dockerfile
+   + `compose.prod.yaml`) instead of the manual `deploy/app-image/` copy. Opportunistic — build when
+   the prod-artifact drift bites or alongside a Deploy iteration; needs `provision`'s persisted `infra`.
 
 The single clearest success metric: **`lib/db.ts` shrinks back toward just `goals`/`tasks` queries**
 as C1/C3/C4 extract their tables and logic into the platform.
@@ -871,6 +905,22 @@ manages are data-plane.
   0.6.1: `build_7608e7eb` / test **80/0** / lint **0**; the `habits-finalize` cron job survived the
   control-plane restart (durable `.forge` state). Dev is now unified with prod on 0.6.1.
 
+### P4 · `forge build` then `forge dev` corrupts the shared `.next` → dev serves 500s — 🔴 open · Owner: platform-builder
+- **Hit during:** C2 verification. Running `forge build` (Next **production** `.next`) and then
+  `forge dev` (Next **dev-mode** `.next`) over the **same** bind-mounted `app/.next` leaves the dev
+  server loading stale production chunks — every route 500s with
+  `Error: Cannot find module './chunks/vendor-chunks/next.js'` (pages `_document`/`_error` fail to
+  load). It is **not** an app bug: a real handler error returns the app's JSON, not this HTML; the dev
+  server itself is in a bad state. Recovered by `forge dev --stop` → `rm -rf app/.next` → `forge dev`.
+- **Why it matters:** `build` and `dev` are both first-class `./forge` steps and the natural
+  verify sequence (`build`/`test`/`lint`, then `dev` to exercise it) walks straight into it. The
+  failure looks like an app bug and sends you debugging the wrong layer; clearing `.next` by hand is
+  exactly the "go around Forge" move the workspace forbids.
+- **Ask:** make `build` and `dev` **not share** one `.next` — e.g. separate output dirs
+  (`.next` for dev, `.next-prod`/`distDir` for build), or have `forge dev` detect a production `.next`
+  and reset it before starting (so the dev↔build order never corrupts state). Purely a
+  **control-plane** dev-tooling concern (no data at risk); low urgency but a real footgun.
+
 ---
 
 ## Handoff log
@@ -903,6 +953,7 @@ Append one line per state change (newest last). `by` = role; `ref` = commit / PR
 | — | baton freed | platform-builder | `PLATFORM_CAPABILITIES.md` | C7 fully done (delivered + adopted). No ledger write is pending: the **C3** build happens in the *forge* repo, not here. Baton → **`free`** — platform-builder re-acquires it to write the C3 delivery block; forge-os may acquire it to record the supervised **box-deploy verification** in the C7 Adoption block. (Holding it during a build just blocks the other side for no reason.) |
 | C7 | box path verified | forge-os | (human) | supervised box `make deploy` succeeded — the transient-control-plane + `forge deploy` path deploys forge-os end-to-end on the box. ⚠ caveat in the C7 Adoption *Verified* line cleared. Baton acquired for this one write, released → **`free`**. |
 | C3 | → 🟢 ready | platform-builder | `0.7.0@sha256:b4933e46…` + dp `@sha256:107ecff5…` | Application event log delivered (**data-plane**, R3): the running app emits/queries its OWN domain events via `POST`/`GET /app-events` (+ `/app-events/latest`) on both servers — the **first app→Forge direction**. `AppEvent` = open-`type`, subject-keyed, denormalized per-app log (`app-events/<app_id>.jsonl`), separate from the closed `ForgeEvent` catalog. `inspect app-events` for observability. 57/57 tests + verified live (emit→feed→filter→latest→422). Baton (was `free`) → **forge-os** to adopt: delete the `events` table + `recordEvent`/`listEvents`, add `lib/forge-events.ts` + `FORGE_EVENTS_URL`; keep `timeline.ts`. |
+| C8 | filed 🟡 | forge-os | `d20e511`+`88f14e8` | filed **C8 · Productionize** — Forge should GENERATE the prod artifacts (app standalone Dockerfile + `compose.prod.yaml`) the way `provision` generates the dev `compose.yaml`, instead of the manual copy (forge-starter `deploy/app-image/` → `app/`) + hand-authored prod compose. Pairs with **C7 Deploy**. Surfaced reconciling the forge-os-vs-forge-starter Dockerfile-location discrepancy (app-image = the *web* image, not the data-plane sidecar). Owner → platform-builder. Baton stays **forge-os** (C3 adoption in flight). |
 | P3 | → ✅ adopted | forge-os | `202ee28` | bumped the dev control plane `0.4.0 → 0.6.1@482bda5c…` (max over adopted C2/C5/C7; folds in the 0.5.1 P3 fix; arm64 confirmed first) — dev now unified with the `make deploy` transient plane on one pin. Flag-less `provision` converged (P1): only change was `pg_isready -U forge` → `-U forge -d forge_os`; a fresh postgres logged **0** `FATAL: database "forge"`. Re-validated build/test(80/0)/lint on 0.6.1; the `habits-finalize` cron survived the restart. Baton acquired for this one write, released → **`free`**. Next open work: **C3 Event log** (platform-builder builds it in the forge repo). |
 
 ---
