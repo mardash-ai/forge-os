@@ -5,13 +5,14 @@
 import { Pool } from 'pg';
 import type { Goal, GoalStatus, GoalWithProgress, GoalWithTasks, Task } from './goals';
 import { progressPercent } from './goals';
-import type { EventData, EventType, TimelineEvent } from './timeline';
+import { emitAppEvent, latestActivityBySubject } from './forge-events';
 import { bucketFor } from './schedule';
 import { computeStreak, dateOf, finalizeStreak, periodStart, type Cadence, type StreakInfo } from './habits';
 import {
   COLD_THRESHOLD_DAYS,
   activeNotifications,
   buildNotifications,
+  coldGoals,
   type ColdInput,
   type Notification,
 } from './notifications';
@@ -57,19 +58,8 @@ function ensureSchema(): Promise<void> {
       -- Added by the Time & Today feature (idempotent for existing tasks tables).
       ALTER TABLE tasks ADD COLUMN IF NOT EXISTS due_date date;
       CREATE INDEX IF NOT EXISTS tasks_due_date_idx ON tasks (due_date);
-      -- Activity log. goal_id/task_id are plain refs (no FK): events are an
-      -- immutable record and carry a denormalized snapshot in data, so they
-      -- render even if the goal/task later changes.
-      CREATE TABLE IF NOT EXISTS events (
-        id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-        type text NOT NULL,
-        goal_id uuid,
-        task_id uuid,
-        data jsonb NOT NULL DEFAULT '{}',
-        created_at timestamptz NOT NULL DEFAULT now()
-      );
-      CREATE INDEX IF NOT EXISTS events_created_at_idx ON events (created_at DESC);
-      CREATE INDEX IF NOT EXISTS events_goal_id_idx ON events (goal_id);
+      -- (Activity events moved to the Forge app event log — capability C3. The app
+      -- emits/reads them via lib/forge-events.ts; there is no local events table.)
       -- Only dismissals are stored; notifications themselves are derived live.
       CREATE TABLE IF NOT EXISTS dismissed_notifications (
         key text PRIMARY KEY,
@@ -172,62 +162,9 @@ function mapTask(r: TaskRow): Task {
 const GOAL_COLS = 'id, title, description, status, created_at';
 // due_date cast to text so pg returns "YYYY-MM-DD" instead of a tz-shifted Date.
 const TASK_COLS = 'id, goal_id, title, done, due_date::text AS due_date, created_at';
-const EVENT_COLS = 'id, type, goal_id, task_id, data, created_at';
 
-interface EventRow {
-  id: string;
-  type: string;
-  goal_id: string | null;
-  task_id: string | null;
-  data: EventData | null;
-  created_at: Date;
-}
-function mapEvent(r: EventRow): TimelineEvent {
-  return {
-    id: r.id,
-    type: r.type as EventType,
-    goalId: r.goal_id,
-    taskId: r.task_id,
-    data: r.data ?? {},
-    createdAt: new Date(r.created_at).toISOString(),
-  };
-}
-
-// Append an activity event. Best-effort: logging must never break the mutation
-// that triggered it.
-async function recordEvent(input: {
-  type: EventType;
-  goalId?: string | null;
-  taskId?: string | null;
-  data: EventData;
-}): Promise<void> {
-  try {
-    await query(
-      `INSERT INTO events (type, goal_id, task_id, data) VALUES ($1, $2, $3, $4::jsonb)`,
-      [input.type, input.goalId ?? null, input.taskId ?? null, JSON.stringify(input.data)],
-    );
-  } catch {
-    // swallow — the activity log is not worth failing a real action over
-  }
-}
-
-/** Recent events, newest first. Optional single-goal filter. */
-export async function listEvents(opts: { goalId?: string; limit?: number } = {}): Promise<TimelineEvent[]> {
-  const limit = Math.min(Math.max(opts.limit ?? 100, 1), 500);
-  if (opts.goalId !== undefined) {
-    if (!isUuid(opts.goalId)) return [];
-    const rows = await query<EventRow>(
-      `SELECT ${EVENT_COLS} FROM events WHERE goal_id = $1 ORDER BY created_at DESC LIMIT $2`,
-      [opts.goalId, limit],
-    );
-    return rows.map(mapEvent);
-  }
-  const rows = await query<EventRow>(
-    `SELECT ${EVENT_COLS} FROM events ORDER BY created_at DESC LIMIT $1`,
-    [limit],
-  );
-  return rows.map(mapEvent);
-}
+// Activity events are emitted to / read from the Forge app event log (C3) via
+// lib/forge-events.ts — see emitAppEvent below and listTimelineEvents there.
 
 /** All goals, newest first, each with derived progress. */
 export async function listGoals(): Promise<GoalWithProgress[]> {
@@ -253,7 +190,7 @@ export async function createGoal(title: string, description: string): Promise<Go
     [title, description],
   );
   const goal = mapGoal(rows[0]);
-  await recordEvent({ type: 'goal.created', goalId: goal.id, data: { goalTitle: goal.title } });
+  await emitAppEvent({ type: 'goal.created', subject: goal.id, data: { goalTitle: goal.title } });
   return { ...goal, total: 0, done: 0, progress: 0 };
 }
 
@@ -290,9 +227,9 @@ export async function updateGoalStatus(id: string, status: GoalStatus): Promise<
   if (rows.length === 0) return null;
   const goal = mapGoal(rows[0]);
   if (rows[0].from_status !== goal.status) {
-    await recordEvent({
+    await emitAppEvent({
       type: 'goal.status_changed',
-      goalId: goal.id,
+      subject: goal.id,
       data: { goalTitle: goal.title, from: rows[0].from_status as GoalStatus, to: goal.status },
     });
   }
@@ -312,11 +249,10 @@ export async function addTask(goalId: string, title: string): Promise<Task | nul
     [goalId, title],
   );
   const task = mapTask(rows[0]);
-  await recordEvent({
+  await emitAppEvent({
     type: 'task.added',
-    goalId,
-    taskId: task.id,
-    data: { taskTitle: task.title, goalTitle: goal[0].title },
+    subject: goalId,
+    data: { taskTitle: task.title, goalTitle: goal[0].title, taskId: task.id },
   });
   return task;
 }
@@ -334,11 +270,10 @@ export async function completeTask(id: string): Promise<Task | null> {
   if (rows.length === 0) return null;
   const task = mapTask(rows[0]);
   if (!rows[0].was_done) {
-    await recordEvent({
+    await emitAppEvent({
       type: 'task.completed',
-      goalId: task.goalId,
-      taskId: task.id,
-      data: { taskTitle: task.title },
+      subject: task.goalId,
+      data: { taskTitle: task.title, taskId: task.id },
     });
   }
   return task;
@@ -393,24 +328,26 @@ export async function listDueTasks(): Promise<DueTask[]> {
 
 // ---- notifications (derived; only dismissals are persisted) ----
 
-/** Active goals whose last activity (latest event, else creation) is older than
- *  the cold threshold — the "gone cold" candidates. Coldest first. */
-async function listColdGoals(thresholdDays: number): Promise<ColdInput[]> {
-  const rows = await query<{ id: string; title: string; last_activity: Date }>(
-    `SELECT g.id, g.title, COALESCE(MAX(e.created_at), g.created_at) AS last_activity
-     FROM goals g
-     LEFT JOIN events e ON e.goal_id = g.id
-     WHERE g.status = 'active'
-     GROUP BY g.id, g.created_at
-     HAVING COALESCE(MAX(e.created_at), g.created_at) < now() - ($1::int * interval '1 day')
-     ORDER BY last_activity ASC`,
-    [thresholdDays],
+/** Active goals whose last activity (latest app event, else creation) is older than
+ *  the cold threshold — the "gone cold" candidates. Coldest first. The latest-activity
+ *  map comes from the C3 event log; the pure `coldGoals` rule filters + sorts. */
+async function listColdGoals(thresholdDays: number, now: Date): Promise<ColdInput[]> {
+  const [goals, latest] = await Promise.all([
+    query<{ id: string; title: string; created_at: Date }>(
+      `SELECT id, title, created_at FROM goals WHERE status = 'active'`,
+    ),
+    latestActivityBySubject(),
+  ]);
+  return coldGoals(
+    goals.map((g) => ({
+      goalId: g.id,
+      goalTitle: g.title,
+      createdAt: new Date(g.created_at).toISOString(),
+    })),
+    latest,
+    thresholdDays,
+    now,
   );
-  return rows.map((r) => ({
-    goalId: r.id,
-    goalTitle: r.title,
-    lastActivity: new Date(r.last_activity).toISOString(),
-  }));
 }
 
 async function listDismissedKeys(): Promise<Set<string>> {
@@ -427,7 +364,7 @@ export async function dismissNotification(key: string): Promise<void> {
 export async function listActiveNotifications(now: Date): Promise<Notification[]> {
   const [due, cold, dismissed] = await Promise.all([
     listDueTasks(),
-    listColdGoals(COLD_THRESHOLD_DAYS),
+    listColdGoals(COLD_THRESHOLD_DAYS, now),
     listDismissedKeys(),
   ]);
   const overdue = due

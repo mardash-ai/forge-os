@@ -10,10 +10,13 @@ export type EventType =
   | 'task.added'
   | 'task.completed';
 
-/** Denormalized snapshot stored with each event so the feed renders standalone. */
+/** Denormalized snapshot stored with each event so the feed renders standalone.
+ *  Under the C3 app event log, everything but the subject (=goalId) lives here,
+ *  including the task id for task events. */
 export interface EventData {
   goalTitle?: string;
   taskTitle?: string;
+  taskId?: string | null;
   from?: GoalStatus;
   to?: GoalStatus;
 }

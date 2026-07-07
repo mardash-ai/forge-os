@@ -1,12 +1,12 @@
 import Link from 'next/link';
-import { listEvents } from '@/lib/db';
+import { listTimelineEvents } from '@/lib/forge-events';
 import { describeEvent, formatTime, groupByDay, isWarm, sparkKind } from '@/lib/timeline';
 import { SiteNav } from '@/app/components/SiteNav';
 
 export const dynamic = 'force-dynamic';
 
 export default async function TimelinePage() {
-  const events = await listEvents({ limit: 100 });
+  const events = await listTimelineEvents({ limit: 100 });
   const groups = groupByDay(events, new Date());
 
   return (

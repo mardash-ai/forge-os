@@ -33,6 +33,35 @@ export interface ColdInput {
   lastActivity: string; // ISO timestamp
 }
 
+/** An active goal plus when it was created — the fallback "last activity" for a goal with no events. */
+export interface ActiveGoal {
+  goalId: string;
+  goalTitle: string;
+  createdAt: string; // ISO timestamp
+}
+
+/**
+ * The active goals gone cold: last activity (latest event, else creation) older than
+ * `thresholdDays`, coldest first. Pure — the DB layer supplies the goal list and the
+ * per-goal latest-event map (from the C3 event log), replacing the old SQL join.
+ */
+export function coldGoals(
+  goals: ActiveGoal[],
+  latestBySubject: Record<string, string>,
+  thresholdDays: number,
+  now: Date,
+): ColdInput[] {
+  const cutoff = now.getTime() - thresholdDays * 86_400_000;
+  return goals
+    .map((g) => ({
+      goalId: g.goalId,
+      goalTitle: g.goalTitle,
+      lastActivity: latestBySubject[g.goalId] ?? g.createdAt,
+    }))
+    .filter((g) => new Date(g.lastActivity).getTime() < cutoff)
+    .sort((a, b) => new Date(a.lastActivity).getTime() - new Date(b.lastActivity).getTime());
+}
+
 function days(n: number): string {
   return `${n} day${n === 1 ? '' : 's'}`;
 }

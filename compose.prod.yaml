@@ -31,6 +31,10 @@ services:
       # Deploy-time secret delivery — empty degrades gracefully (AI drafting 503s,
       # app stays up). In real prod, source from your platform's secret store.
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      # C3 · app event log — the app emits/reads its own domain events against the
+      # data-plane sidecar over the private `internal` network. Unset or unreachable
+      # degrades to an empty feed; the app never crashes.
+      - FORGE_EVENTS_URL=http://data-plane:3718
     depends_on:
       postgres:
         condition: service_healthy
@@ -60,7 +64,7 @@ services:
   # Forge DATA-PLANE sidecar — runs the scheduler (C2) + secrets store (C5) and calls
   # back into `web` over `internal`. Slim image, no dev deps. Not exposed to Traefik.
   data-plane:
-    image: ${FORGE_DATA_PLANE_IMAGE:-ghcr.io/mardash-ai/forge-data-plane:latest}
+    image: ${FORGE_DATA_PLANE_IMAGE:-ghcr.io/mardash-ai/forge-data-plane@sha256:107ecff57355eee25f58e0cf4c84a1019d844eaaffaf9c0ead50b01bd5a088cb}
     pull_policy: missing
     restart: unless-stopped
     environment:

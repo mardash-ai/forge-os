@@ -2,8 +2,10 @@ import { describe, it, expect } from 'vitest';
 import {
   activeNotifications,
   buildNotifications,
+  coldGoals,
   daysSince,
   groupByKind,
+  type ActiveGoal,
   type ColdInput,
   type OverdueInput,
 } from '../lib/notifications';
@@ -72,5 +74,32 @@ describe('groupByKind', () => {
     expect(groups[0].notes).toHaveLength(2);
     const overdueOnly = groupByKind(buildNotifications(OVERDUE, [], NOW));
     expect(overdueOnly.map((g) => g.kind)).toEqual(['overdue']);
+  });
+});
+
+describe('coldGoals', () => {
+  const GOALS: ActiveGoal[] = [
+    { goalId: 'g1', goalTitle: 'Fresh', createdAt: '2026-07-06T09:00:00Z' }, // recent event below
+    { goalId: 'g2', goalTitle: 'Cold', createdAt: '2026-06-01T00:00:00Z' }, // no event → uses createdAt
+    { goalId: 'g3', goalTitle: 'Coldest', createdAt: '2026-05-01T00:00:00Z' }, // older still
+  ];
+
+  it('flags goals whose latest activity (event, else creation) is past the threshold, coldest first', () => {
+    const latest = { g1: '2026-07-06T09:00:00Z' }; // g1 active today; g2/g3 have no events
+    const cold = coldGoals(GOALS, latest, 7, NOW);
+    expect(cold.map((c) => c.goalId)).toEqual(['g3', 'g2']); // g1 excluded (fresh); coldest first
+    expect(cold[0].lastActivity).toBe('2026-05-01T00:00:00Z');
+  });
+
+  it('falls back to createdAt when a goal has no event in the latest map', () => {
+    const cold = coldGoals([{ goalId: 'g9', goalTitle: 'X', createdAt: '2026-01-01T00:00:00Z' }], {}, 7, NOW);
+    expect(cold).toHaveLength(1);
+    expect(cold[0].lastActivity).toBe('2026-01-01T00:00:00Z');
+  });
+
+  it('a recent event rescues an old goal from going cold', () => {
+    const latest = { g2: '2026-07-06T08:00:00Z' }; // g2 got a fresh event
+    const cold = coldGoals(GOALS, latest, 7, NOW);
+    expect(cold.map((c) => c.goalId)).toEqual(['g3']); // only g3 remains cold
   });
 });

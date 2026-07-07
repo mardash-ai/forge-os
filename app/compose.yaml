@@ -14,6 +14,14 @@ services:
       - HOST=0.0.0.0
       - PORT=3000
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      # C3 · app event log — the app emits/reads its own events against the control
+      # plane in dev (prod points at the data-plane sidecar). FORGE_APP_NAME lets the
+      # client name the app: the multi-app control plane requires it, whereas the prod
+      # single-app sidecar infers it (so prod `web` leaves it unset). NOTE: `forge
+      # provision` regenerates this file and doesn't know these vars — re-add after a
+      # re-provision.
+      - FORGE_EVENTS_URL=${FORGE_EVENTS_URL:-http://host.docker.internal:3717}
+      - FORGE_APP_NAME=${FORGE_APP_NAME:-forge-os}
     depends_on:
       - postgres
     ports:

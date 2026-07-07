@@ -13,6 +13,14 @@ new backwards-compatible features, **PATCH** for backwards-compatible fixes.
 
 ### Added
 
+- **Adopted the Forge application event log (capability C3).** The Timeline and cold-goal detection
+  now read the app's own domain events from Forge instead of a local `events` table — the app's first
+  outbound integration with the platform. Each mutation emits (best-effort, never blocking) via a new
+  `lib/forge-events.ts` client; the feed, per-goal filter, and "last activity" all read it back. Bumped
+  the control plane to `forge-control-plane:0.7.0@sha256:b4933e46…` and pinned the first **data-plane
+  image** (`forge-data-plane@sha256:107ecff5…`) for prod. The event log is unavailable-tolerant: if it
+  can't be reached, the feed is empty and mutations still succeed. Removed the `events` table and its
+  query layer (`lib/db.ts` shrank 656→593 lines).
 - **Adopted the Forge scheduler (capability C2).** A durable UTC-midnight job
   (`POST /api/cron/habits-finalize`) now finalizes each habit's closed period and persists streak
   breaks in a new `habit_streak_breaks` table — giving Habits a real period boundary instead of a
