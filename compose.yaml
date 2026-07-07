@@ -12,7 +12,7 @@
 # dependencies.
 services:
   api:
-    image: ${FORGE_IMAGE:-ghcr.io/mardash-ai/forge-control-plane:0.12.0@sha256:d5943450aa1ffe50449465d1cf049c049baa6c893615440718a66de161ca3da6}
+    image: ${FORGE_IMAGE:-ghcr.io/mardash-ai/forge-control-plane:0.14.0@sha256:456ea50baf369562c7428bc9f9070ec7bf1bd5cc189a9866c4a1067829e51198}
     # Use a locally-present image if the registry copy isn't pulled yet.
     pull_policy: missing
     ports:
@@ -25,6 +25,13 @@ services:
       - FORGE_WORKSPACE=${PWD}
       - FORGE_STATE_DIR=${PWD}/.forge
       - FORGE_APP_LAYOUT=single
+      # This project runs ONE app (single layout) — name it so the control plane's
+      # hosted auth (C10) infers the app the way the prod single-app data-plane does,
+      # letting the same-origin /auth/* proxy work identically in dev and prod.
+      - FORGE_APP_NAME=forge-os
+      # Local http dev only: issue non-Secure session cookies so they work over
+      # http://localhost. Prod runs the data-plane behind TLS and omits this.
+      - FORGE_AUTH_INSECURE_COOKIES=1
     volumes:
       # Talk to the host Docker daemon.
       - /var/run/docker.sock:/var/run/docker.sock

@@ -7,6 +7,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.0] — 2026-07-07
+
+### Added
+
+- **Adopt the platform's hosted Identity / Auth (C10) — the whole app is gated now.** forge-os ships
+  **no auth UI and no auth tables**: it proxies the platform's hosted `/auth/*` surface and verifies
+  the platform-issued session locally. Sign-in/up/reset all live on the hosted pages; we only gate.
+  This closes the "**no authentication**" security gap called out in `PROJECT_IDEA.md` (Epic M).
+  - `middleware.ts` — the gate. Every page and `/api/*` route requires a valid session **except**:
+    `/auth/*` (the hosted surface, proxied), `/api/health` (public readiness, C6), and `/api/cron/*`
+    (service-scoped). An unauthenticated **page** → `302 /auth/login?next=<path>` (with `next`
+    sanitized to a local path — no open redirect); an unauthenticated **`/api/*`** → `401`.
+  - `lib/auth.ts` — `getSession()` / `requireUser()` plus an Edge-safe `verifySessionToken()`. The
+    `forge_session` cookie is a compact **HS256 JWS** (`{ userId, email, sessionId, iat, exp }`);
+    we verify the signature + `exp` **locally with `AUTH_SESSION_SECRET`** (via `jose`) — **no
+    round-trip** for the gate. Per-user row ownership stays out of scope (that is C11).
+  - `/api/cron/*` is now **closed**: admitted only on a matching service token
+    (`X-Forge-Service-Token` or `Authorization: Bearer` == `AUTH_SERVICE_TOKEN`, constant-time),
+    which the C2 scheduler attaches on cron callbacks — previously these routes were open.
+  - Same-origin `/auth/:path*` **rewrite** in `next.config.mjs` → `${FORGE_DATA_PLANE_URL}/auth/*`,
+    so the session cookie lands on our domain (`SameSite=Lax` needs it) and no auth UI is shipped.
+  - `SiteNav` gains an account tail: the signed-in email + a hosted **Sign out** (`/auth/logout`)
+    link (**Sign in** → `/auth/login` when signed out), rendered from `getSession()`.
+  - New dependency **`jose` 5.9.6** (HS256 verify; Web-Crypto based, works in the Edge runtime).
+  - Declare the C5 secrets **`AUTH_SESSION_SECRET`** + **`AUTH_SERVICE_TOKEN`** (injected into the
+    web tier **and** the data-plane); **`GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET`** are declared
+    but left for a human (a real Google OAuth app) — email/password gates the app without them.
+  - Dev runs the hosted auth as a **single-app Forge data-plane sidecar** (the same image + role as
+    prod) sharing the control plane's state dir, so it infers the app and the same-origin proxy
+    works identically in dev and prod. Local http dev issues non-Secure cookies
+    (`FORGE_AUTH_INSECURE_COOKIES=1`).
+
+### Changed
+
+- **Bump the Forge images to `0.14.0` (multi-arch, digest-pinned).** Control plane
+  `0.12.0 → 0.14.0` and data-plane `0.11.1 → 0.14.0` (`compose.yaml`, `compose.prod.yaml`,
+  `forge.app.json`); `0.14.0` carries C10 hosted auth (plus C12 email + the P4 `.next` fix). The
+  prod stack was regenerated via `forge productionize` to inject the auth secrets into both tiers.
+- **Expand `PROJECT_IDEA.md` into a full vision / status / backlog** — Wave 1 (C1–C8) marked done and
+  **Identity / Auth (Epic M)** flagged the near-term priority, which is the pressure this release
+  answers.
+
 ## [0.5.0] — 2026-07-07
 
 ### Added
@@ -268,7 +310,8 @@ _This changelog started mid-project: the Goals & Tasks core and the Timeline →
 Reminders → Planner Agent → Habits features predate it; see `PROJECT_IDEA.md`'s roadmap and the git
 history for that record._
 
-[Unreleased]: https://github.com/mardash-ai/forge-os/compare/v0.5.0...HEAD
+[Unreleased]: https://github.com/mardash-ai/forge-os/compare/v0.6.0...HEAD
+[0.6.0]: https://github.com/mardash-ai/forge-os/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/mardash-ai/forge-os/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/mardash-ai/forge-os/compare/v0.3.1...v0.4.0
 [0.3.1]: https://github.com/mardash-ai/forge-os/compare/v0.3.0...v0.3.1

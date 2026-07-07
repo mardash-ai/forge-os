@@ -634,6 +634,15 @@ a {
 .site-nav .sep {
   color: #4a3f35;
 }
+.site-nav .nav-user {
+  color: var(--ash);
+  text-transform: none;
+  letter-spacing: 0;
+  max-width: 16ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 
 /* status readout under the floor title */
 .floor-status {

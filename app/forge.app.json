@@ -14,7 +14,11 @@
     "postgres": true,
     "redis": false,
     "secrets": [
-      "ANTHROPIC_API_KEY"
+      "ANTHROPIC_API_KEY",
+      "AUTH_SESSION_SECRET",
+      "AUTH_SERVICE_TOKEN",
+      "GOOGLE_CLIENT_ID",
+      "GOOGLE_CLIENT_SECRET"
     ],
     "ports": {
       "web": 3000,
@@ -25,7 +29,7 @@
     "host": "forge-os.mardash.ai",
     "readiness_path": "/api/health",
     "web_image": "ghcr.io/mardash-ai/forge-os-app@sha256:2d2088f99ecb4857a186ccd3cecc5f86bfcc9f329fb3fa463c1d042e97800166",
-    "data_plane_image": "ghcr.io/mardash-ai/forge-data-plane:0.11.1@sha256:759b27a69b996d0a69ebf42bc45f27d2a0bf7bdab1d13be045d023cf5e817cb3",
+    "data_plane_image": "ghcr.io/mardash-ai/forge-data-plane:0.14.0@sha256:edbef8a66eccd800fe6b7db1307a42270830709ed0218fa04422560744a579c9",
     "cert_resolver": "letsencrypt"
   }
 }

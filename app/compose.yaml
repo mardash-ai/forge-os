@@ -14,16 +14,24 @@ services:
       - HOST=0.0.0.0
       - PORT=3000
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      # C10 secrets (session key + cron service token) — injected from the Forge
+      # secret store at dev-run time; the middleware verifies the session cookie
+      # with AUTH_SESSION_SECRET and gates /api/cron/* on AUTH_SERVICE_TOKEN.
+      - AUTH_SESSION_SECRET=${AUTH_SESSION_SECRET:-}
+      - AUTH_SERVICE_TOKEN=${AUTH_SERVICE_TOKEN:-}
+      # Google OAuth is a human step (a real Google app) — declared, unset locally.
+      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID:-}
+      - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET:-}
       # C3 · app event log — the app emits/reads its own events against the control
-      # plane in dev (prod points at the data-plane sidecar). FORGE_APP_NAME lets the
-      # client name the app: the multi-app control plane requires it, whereas the prod
-      # single-app sidecar infers it (so prod `web` leaves it unset). NOTE: `forge
-      # provision` regenerates this file and doesn't know these vars — re-add after a
-      # re-provision.
+      # plane in dev. NOTE: `forge provision` regenerates this file and doesn't know
+      # these vars — re-add them (and the data-plane below) after a re-provision.
       - FORGE_EVENTS_URL=${FORGE_EVENTS_URL:-http://host.docker.internal:3717}
       - FORGE_APP_NAME=${FORGE_APP_NAME:-forge-os}
+      # C10 · the /auth/* rewrite proxies here (same image + role as prod's sidecar).
+      - FORGE_DATA_PLANE_URL=${FORGE_DATA_PLANE_URL:-http://data-plane:3718}
     depends_on:
       - postgres
+      - data-plane
     ports:
       - "3000:3000"
     volumes:
@@ -35,6 +43,34 @@ services:
       timeout: 5s
       retries: 5
       start_period: 20s
+
+  # C10 · Identity / Auth — the platform's HOSTED auth, run in dev as a single-app
+  # Forge data-plane sidecar (the SAME image + role prod uses). Because it runs
+  # single-app it INFERS the app, so the same-origin /auth/* proxy works identically
+  # in dev and prod with no app param. It shares the control plane's state dir
+  # (../.forge) so it sees the seeded owner + the same encrypted secret vault (hence
+  # the same AUTH_SESSION_SECRET the web tier verifies with). Local http only:
+  # FORGE_AUTH_INSECURE_COOKIES=1 issues non-Secure cookies. NOT written by
+  # `forge provision` — re-add after a re-provision.
+  data-plane:
+    image: ghcr.io/mardash-ai/forge-data-plane:0.14.0@sha256:edbef8a66eccd800fe6b7db1307a42270830709ed0218fa04422560744a579c9
+    pull_policy: missing
+    environment:
+      - PORT=3718
+      - FORGE_APP_NAME=forge-os
+      - FORGE_APP_REPO_PATH=/app
+      - FORGE_STATE_DIR=/forge-state
+      - FORGE_AUTH_INSECURE_COOKIES=1
+      - FORGE_JOBS_FILE=/app/forge.jobs.json
+    volumes:
+      - ../.forge:/forge-state
+      - .:/app:ro
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:3718/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
 
   postgres:
     image: postgres:16-alpine

@@ -23,6 +23,10 @@ services:
       - FORGE_DATA_PLANE_URL=http://data-plane:3718
       - DATABASE_URL=postgres://forge:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env.prod}@postgres:5432/forge_os
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - AUTH_SESSION_SECRET=${AUTH_SESSION_SECRET:-}
+      - AUTH_SERVICE_TOKEN=${AUTH_SERVICE_TOKEN:-}
+      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID:-}
+      - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET:-}
     depends_on:
       postgres:
         condition: service_healthy
@@ -50,7 +54,7 @@ services:
       - "traefik.http.services.forge-os.loadbalancer.healthcheck.interval=10s"
 
   data-plane:
-    image: ghcr.io/mardash-ai/forge-data-plane:0.11.1@sha256:759b27a69b996d0a69ebf42bc45f27d2a0bf7bdab1d13be045d023cf5e817cb3
+    image: ghcr.io/mardash-ai/forge-data-plane:0.14.0@sha256:edbef8a66eccd800fe6b7db1307a42270830709ed0218fa04422560744a579c9
     restart: unless-stopped
     environment:
       - PORT=3718
@@ -59,6 +63,10 @@ services:
       - FORGE_STATE_DIR=/forge-state
       - FORGE_SECRETS_KEY=${FORGE_SECRETS_KEY:-}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - AUTH_SESSION_SECRET=${AUTH_SESSION_SECRET:-}
+      - AUTH_SERVICE_TOKEN=${AUTH_SERVICE_TOKEN:-}
+      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID:-}
+      - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET:-}
       - FORGE_JOBS_FILE=/app/forge.jobs.json
     volumes:
       - forge_state:/forge-state

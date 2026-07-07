@@ -1,6 +1,6 @@
 {
   "name": "forge-os",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "private": true,
   "scripts": {
     "dev": "next dev -H 0.0.0.0 -p 3000",
@@ -10,6 +10,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "jose": "5.9.6",
     "next": "14.2.15",
     "pg": "8.13.1",
     "react": "18.3.1",
