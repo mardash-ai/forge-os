@@ -7,6 +7,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.1] — 2026-07-07
+
+### Fixed
+
+- **Re-adopt the C8 `Productionize` prod-correctness fixes (forge `0.11.1`).** The first generated
+  `app/compose.prod.yaml` (C8, `0.11.0`) had three generator bugs that broke prod runtime wiring; the
+  platform fixed the **generator** in `0.11.1`, so re-running `forge productionize` regenerates the
+  stack with all of them closed. Bump the control-plane default to
+  `forge-control-plane:0.11.1@sha256:433a0142…` (`compose.yaml`, dev control-plane) and re-run
+  `forge productionize --app forge-os --host forge-os.mardash.ai --web-image
+  ghcr.io/mardash-ai/forge-os-app@sha256:2d2088f9… --data-plane-image
+  ghcr.io/mardash-ai/forge-data-plane:0.11.1@sha256:759b27a6… --readiness-path /api/health
+  --cert-resolver letsencrypt` (both images multi-arch amd64+arm64; the data-plane pin is bumped in
+  `app/compose.prod.yaml` + `app/forge.app.json`). The regenerated compose now carries:
+  - **(P7.1)** `web` gets `FORGE_EVENTS_URL=http://data-plane:3718` — the base URL the app's
+    C1/C3/C4 clients (`lib/forge-agent.ts`, `lib/forge-events.ts`, `lib/forge-notifications.ts`) read
+    — with `FORGE_DATA_PLANE_URL` kept as an alias, so prod no longer loses data-plane reachability.
+  - **(P6)** the `data-plane` sidecar gets `FORGE_SECRETS_KEY=${FORGE_SECRETS_KEY:-}` **and** each
+    declared secret (`ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}`), so it can decrypt the C5 vault the
+    agent runtime (C1) reads in prod — `agent-run` no longer 503s. `app/.env.prod.example` now
+    documents `FORGE_SECRETS_KEY`; a local `.env.prod` (gitignored) holds the real value.
+  - **(P7.3)** add `app/forge.jobs.json` declaring the `habits-finalize` C2 job
+    (`cron 5 0 * * *` → `/api/cron/habits-finalize`); the generator bind-mounts it `:ro` and pins
+    `FORGE_JOBS_FILE=/app/forge.jobs.json`, so the job auto-registers on boot in prod.
+- **Simplify `make deploy` (P7.2).** `forge deploy`'s `--compose-file` now defaults to
+  `app/compose.prod.yaml` (what `forge productionize` emits), so `make deploy` drops the explicit
+  `--compose-file app/compose.prod.yaml`. Gitignore `.env.prod`, and refresh `DEPLOY.md` — the
+  "Known gaps after C8" section becomes "fixes landed in `0.11.1`". A full prod-deploy on the box
+  remains a pending human step.
+
 ## [0.3.0] — 2026-07-07
 
 ### Changed
@@ -183,7 +213,8 @@ _This changelog started mid-project: the Goals & Tasks core and the Timeline →
 Reminders → Planner Agent → Habits features predate it; see `PROJECT_IDEA.md`'s roadmap and the git
 history for that record._
 
-[Unreleased]: https://github.com/mardash-ai/forge-os/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/mardash-ai/forge-os/compare/v0.3.1...HEAD
+[0.3.1]: https://github.com/mardash-ai/forge-os/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/mardash-ai/forge-os/compare/v0.2.1...v0.3.0
 [0.2.1]: https://github.com/mardash-ai/forge-os/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/mardash-ai/forge-os/compare/v0.1.1...v0.2.0

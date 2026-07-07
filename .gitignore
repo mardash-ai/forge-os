@@ -8,6 +8,9 @@ apps/*/next-env.d.ts
 
 # Local overrides
 .env
+# Real production secrets (POSTGRES_PASSWORD, ANTHROPIC_API_KEY, FORGE_SECRETS_KEY).
+# Consumed at deploy; NEVER commit real values (see app/.env.prod.example).
+.env.prod
 *.log
 
 # Deployment helpers — serverconn.sh holds an SSH key passphrase, so these must

@@ -1,0 +1,8 @@
+[
+  {
+    "name": "habits-finalize",
+    "cron": "5 0 * * *",
+    "target_path": "/api/cron/habits-finalize",
+    "method": "POST"
+  }
+]

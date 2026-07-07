@@ -78,7 +78,7 @@ multi-arch (`amd64` + `arm64`).
    POSTGRES_PASSWORD=<a real password>
    ANTHROPIC_API_KEY=<your key, or empty>
    FORGE_SECRETS_KEY=<a strong, STABLE value — see notes AND "Known gaps" below>
-   # FORGE_IMAGE (control-plane) is optional — it defaults to 0.11.0 in compose.yaml;
+   # FORGE_IMAGE (control-plane) is optional — it defaults to 0.11.1 in compose.yaml;
    # override only to pin a different control-plane image for `make deploy`.
    ```
    To change the deployed image digests, re-run `forge productionize` (do NOT hand-edit the compose).
@@ -150,27 +150,28 @@ serving.)
   nothing to run — but **back up the `postgres_data` volume** yourself.
 - **Data lives in named volumes** (`postgres_data`, `forge_state`). `make deploy-down` keeps them;
   never `down -v` in prod — that destroys the database.
-- **Scheduled jobs (C2).** The data-plane can register jobs from a mounted jobs file and call
-  `http://web:3000<target>` on cadence. See [`deploy/jobs.example.json`](deploy/jobs.example.json).
-  **Gap:** the *generated* `app/compose.prod.yaml` no longer bind-mounts `deploy/jobs.json` (it only
-  sets `FORGE_JOBS_FILE=${FORGE_JOBS_FILE:-}`, empty) — see "Known gaps" below.
+- **Scheduled jobs (C2).** The data-plane registers jobs from a mounted jobs file and calls
+  `http://web:3000<target>` on cadence. `app/forge.jobs.json` (declaring `habits-finalize`,
+  `cron 5 0 * * *` → `/api/cron/habits-finalize`) is present, so `forge productionize` (>=0.11.1)
+  bind-mounts it `:ro` and pins `FORGE_JOBS_FILE=/app/forge.jobs.json` in the generated compose — the
+  job registers on boot in prod. (`deploy/jobs.example.json` documents the schema.)
 
-## Known gaps after C8 (productionize) adoption — resolve before a real prod cutover
+## Prod-correctness fixes landed in forge 0.11.1 (was: "Known gaps after C8")
 
-The generated `app/compose.prod.yaml` is derived from `forge.app.json` `infra` + `--host`, so it does
-**not** yet carry three pieces of app-specific runtime wiring the previous hand-authored compose had.
-Dev-level verification (compose config, docker build, health probe, build/test/lint/tsc) is green; a
-full prod-deploy on the box is **pending** these:
+The three gaps the first generated `app/compose.prod.yaml` had were **generator** bugs; forge `0.11.1`
+fixed the generator, and re-running `forge productionize` regenerated the stack with all of them
+closed. Dev-level verification (compose config, build/test/lint/tsc) is green; a full prod-deploy on
+the box is still a **human-box** step (pending). What the fixed generator now emits:
 
-1. **Data-plane base URL var name.** The app's C1/C3/C4 clients read `FORGE_EVENTS_URL`, but the
-   generated compose sets `FORGE_DATA_PLANE_URL` on `web`. As generated, prod loses data-plane
-   reachability (events, notifications, agent planning degrade to unavailable). Reconcile the var name
-   (platform: emit `FORGE_EVENTS_URL`, or the app reads `FORGE_DATA_PLANE_URL`).
-2. **P6 · secret vault for the data-plane.** The generated data-plane sidecar has **no**
-   `FORGE_SECRETS_KEY` and no `ANTHROPIC_API_KEY` (the key is injected only into `web`), so the
-   sidecar cannot decrypt the C5 vault the agent runtime (C1) reads in prod. `agent-run` will 503.
-3. **C2 jobs file not mounted** (see above).
+1. **Data-plane base URL var name (P7.1) — resolved.** `web` now gets
+   `FORGE_EVENTS_URL=http://data-plane:3718` (the var the app's C1/C3/C4 clients read), with
+   `FORGE_DATA_PLANE_URL` kept as an alias.
+2. **Secret vault for the data-plane (P6) — resolved.** The data-plane sidecar now gets
+   `FORGE_SECRETS_KEY=${FORGE_SECRETS_KEY:-}` **and** each declared secret
+   (`ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}`), so it can decrypt the C5 vault the agent runtime
+   (C1) reads in prod — `agent-run` no longer 503s. Set `FORGE_SECRETS_KEY` in the deploy env.
+3. **C2 jobs file mounted (P7.3) — resolved.** `app/forge.jobs.json` is bind-mounted `:ro` and
+   `FORGE_JOBS_FILE=/app/forge.jobs.json` is pinned (see "Scheduled jobs" above).
 
-Also: `forge productionize` emits the stack to `app/compose.prod.yaml`, while `forge deploy`'s
-`--compose-file` default is `compose.prod.yaml` at the repo root — `make deploy` now passes
-`--compose-file app/compose.prod.yaml` explicitly to bridge that. Confirm the roll on the box.
+Also: `forge deploy`'s `--compose-file` now **defaults** to `app/compose.prod.yaml` (P7.2), so
+`make deploy` no longer passes it explicitly. Confirm the roll on the box.

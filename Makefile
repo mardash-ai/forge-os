@@ -55,9 +55,9 @@ PROD := docker compose -f app/compose.prod.yaml
 # images, unlock the keychain + pull interactively first (see DEPLOY.md).
 deploy:
 	$(MAKE) up          # ensure the control plane is running (idempotent; pulls control-plane image if missing)
-	# --compose-file is resolved relative to the repo root by `forge deploy`; the generated
-	# canonical stack lives at app/compose.prod.yaml (C8 · productionize emits into the app dir).
-	./forge deploy --app forge-os --proxy-net proxy --compose-file app/compose.prod.yaml
+	# `forge deploy` (>=0.11.1) defaults --compose-file to the canonical stack `forge productionize`
+	# emits, app/compose.prod.yaml — so no explicit --compose-file is needed (P7.2).
+	./forge deploy --app forge-os --proxy-net proxy
 	@$(PROD) ps
 	@echo ""
 	@echo "Deployed forge-os (zero-downtime roll via forge deploy).  Public:  https://forge-os.mardash.ai/api/health"
