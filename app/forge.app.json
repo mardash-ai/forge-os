@@ -20,5 +20,12 @@
       "web": 3000,
       "postgres": 5433
     }
+  },
+  "production": {
+    "host": "forge-os.mardash.ai",
+    "readiness_path": "/api/health",
+    "web_image": "ghcr.io/mardash-ai/forge-os-app@sha256:2d2088f99ecb4857a186ccd3cecc5f86bfcc9f329fb3fa463c1d042e97800166",
+    "data_plane_image": "ghcr.io/mardash-ai/forge-data-plane:0.11.0@sha256:0528e92059e2871dc1382aa43fb0fb32979349e3d2d0b82b96fd17c7ba2dda89",
+    "cert_resolver": "letsencrypt"
   }
 }

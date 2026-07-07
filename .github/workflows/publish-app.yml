@@ -4,8 +4,8 @@ name: Publish app image
 # no dev deps) to GHCR. Continuous:
 #   - push to main       -> :latest and :sha-<short>
 #   - push a version tag -> :X.Y.Z
-# Multi-arch (linux/amd64 + linux/arm64). Deploy = run compose.prod.yaml with the
-# published image (see DEPLOY.md).
+# Multi-arch (linux/amd64 + linux/arm64). Deploy = run app/compose.prod.yaml (generated
+# by `forge productionize`, C8) with the published image (see DEPLOY.md).
 
 on:
   push:

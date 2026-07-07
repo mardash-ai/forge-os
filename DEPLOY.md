@@ -20,8 +20,15 @@ This is the **data-plane** half of the split — see the diagrams in the Forge r
 the deploy (the start-first roll), never to build.
 
 > **You don't build on the host.** CI builds and publishes the images; the box just pulls and runs
-> them. The box's git checkout provides the manifests (`compose.prod.yaml`, `deploy/`) + `.env`, and
+> them. The box's git checkout provides the manifests (`app/compose.prod.yaml`, `deploy/`) + `.env`, and
 > the control-plane image runs the deploy.
+>
+> **The prod stack is GENERATED now (C8 · productionize).** `app/compose.prod.yaml`, `app/Dockerfile`,
+> `app/.dockerignore`, and `app/.env.prod.example` are emitted by `forge productionize` — do not
+> hand-edit them; re-run `forge productionize --app forge-os --web-image <ref@sha256:…>
+> --data-plane-image <ref@sha256:…>` to change images/host. The web + data-plane images are now
+> **baked as literal digests** in the generated compose (not `${APP_IMAGE}`/`${FORGE_DATA_PLANE_IMAGE}`
+> env indirection). See "Known gaps" at the bottom before a real prod cutover.
 
 ## Deploy in one command (from your laptop)
 
@@ -63,18 +70,18 @@ multi-arch (`amd64` + `arm64`).
    ```
 4. **Create `.env`** from the example (it's gitignored, so a fresh checkout has none):
    ```bash
-   cp .env.prod.example .env && chmod 600 .env
+   cp app/.env.prod.example .env && chmod 600 .env
    ```
-   Then pin digests + set secrets:
+   Then set secrets (the web + data-plane image digests are already baked into
+   `app/compose.prod.yaml` by `forge productionize` — no `APP_IMAGE`/`FORGE_DATA_PLANE_IMAGE` here):
    ```bash
-   APP_IMAGE=ghcr.io/mardash-ai/forge-os-app@sha256:<digest>            # R1: pin, don't track :latest
-   FORGE_DATA_PLANE_IMAGE=ghcr.io/mardash-ai/forge-data-plane@sha256:<digest>
-   FORGE_IMAGE=ghcr.io/mardash-ai/forge-control-plane:0.9.0@sha256:<digest>  # `make deploy` starts it to run `forge deploy`
    POSTGRES_PASSWORD=<a real password>
    ANTHROPIC_API_KEY=<your key, or empty>
-   FORGE_SECRETS_KEY=<a strong, STABLE value — see notes>
+   FORGE_SECRETS_KEY=<a strong, STABLE value — see notes AND "Known gaps" below>
+   # FORGE_IMAGE (control-plane) is optional — it defaults to 0.11.0 in compose.yaml;
+   # override only to pin a different control-plane image for `make deploy`.
    ```
-   Find digests: `docker buildx imagetools inspect ghcr.io/mardash-ai/<image>:latest`.
+   To change the deployed image digests, re-run `forge productionize` (do NOT hand-edit the compose).
 5. **DNS:** `forge-os.mardash.ai` must point at the box (Traefik already serves `*.mardash.ai`).
 6. **Deploy:** `./release/deploy.sh` from your laptop (or `make deploy` on the box).
 
@@ -84,7 +91,7 @@ multi-arch (`amd64` + `arm64`).
 > deploys the **already-cached** images, so config/code changes ship hands-free. To land a **new
 > image**, unlock + pull once interactively: `./release/box-shell.sh`, then
 > `security -v unlock-keychain ~/Library/Keychains/login.keychain-db` and
-> `docker compose -f compose.prod.yaml pull`, then re-deploy. The **control-plane image**
+> `docker compose -f app/compose.prod.yaml pull`, then re-deploy. The **control-plane image**
 > (`FORGE_IMAGE`, started by `make deploy` → `make up` to run `forge deploy`) has the same gotcha —
 > pull it once the same way (`docker compose pull` in the repo root) so `make up` finds it cached.
 
@@ -97,7 +104,7 @@ multi-arch (`amd64` + `arm64`).
 | `make deploy` | start the control plane (idempotent) → **`forge deploy`** (C7): reconcile `postgres`/`data-plane` in place, then a **zero-downtime start-first roll of `web`** → `ps`. `release/deploy.sh` runs `git pull --ff-only` first, so this deploys the current checkout. |
 | `make deploy-ps` | container status |
 | `make deploy-logs` | tail all logs |
-| `make deploy-config` | validate `compose.prod.yaml` + `.env` (no changes) |
+| `make deploy-config` | validate `app/compose.prod.yaml` + `.env` (no changes) |
 | `make deploy-down` | stop the stack, **keep** the data volumes |
 
 ## Zero-downtime deploys — the Forge `Deploy` capability (C7)
@@ -110,7 +117,7 @@ a few seconds → 502s). It:
 1. reconciles the non-public services (`postgres`, `data-plane`) in place;
 2. brings up a **second `web`** on the new image alongside the old (both join `proxy`, so Traefik
    load-balances across them — and, via the `loadbalancer.healthcheck` labels in
-   [`compose.prod.yaml`](compose.prod.yaml), only routes to a replica once it passes `/api/health`);
+   [`app/compose.prod.yaml`](app/compose.prod.yaml), only routes to a replica once it passes `/api/health`);
 3. waits until the new replica is **healthy**, then drains it out of `proxy` and removes it
    (SIGTERM, up to `stop_grace_period: 15s`).
 
@@ -125,9 +132,11 @@ fact). Each roll is recorded as a `Deployment` resource; see it with `./forge in
 
 ## Rollback
 
-Set the previous digest(s) in `.env` on the box and re-run `make deploy` (or `./release/deploy.sh`).
-Pinned digests make rollback deterministic. (The roll itself also auto-rolls-back: a new replica
-that never gets healthy is discarded and the old one keeps serving.)
+Re-run `forge productionize` with the **previous** `--web-image`/`--data-plane-image` digests (the
+generated `app/compose.prod.yaml` bakes them in — they're no longer `.env` overrides), then re-run
+`make deploy` (or `./release/deploy.sh`). Pinned digests make rollback deterministic. (The roll
+itself also auto-rolls-back: a new replica that never gets healthy is discarded and the old one keeps
+serving.)
 
 ## Notes that bite in real prod
 
@@ -141,7 +150,27 @@ that never gets healthy is discarded and the old one keeps serving.)
   nothing to run — but **back up the `postgres_data` volume** yourself.
 - **Data lives in named volumes** (`postgres_data`, `forge_state`). `make deploy-down` keeps them;
   never `down -v` in prod — that destroys the database.
-- **Scheduled jobs.** The data-plane registers jobs from [`deploy/jobs.json`](deploy/jobs.json) at
-  boot and calls `http://web:3000<target>` on cadence. It ships **empty**; add entries once the app
-  exposes the matching cron endpoints (see [`deploy/jobs.example.json`](deploy/jobs.example.json)) —
-  that's what makes the C2 refactor real (work that fires with no user present).
+- **Scheduled jobs (C2).** The data-plane can register jobs from a mounted jobs file and call
+  `http://web:3000<target>` on cadence. See [`deploy/jobs.example.json`](deploy/jobs.example.json).
+  **Gap:** the *generated* `app/compose.prod.yaml` no longer bind-mounts `deploy/jobs.json` (it only
+  sets `FORGE_JOBS_FILE=${FORGE_JOBS_FILE:-}`, empty) — see "Known gaps" below.
+
+## Known gaps after C8 (productionize) adoption — resolve before a real prod cutover
+
+The generated `app/compose.prod.yaml` is derived from `forge.app.json` `infra` + `--host`, so it does
+**not** yet carry three pieces of app-specific runtime wiring the previous hand-authored compose had.
+Dev-level verification (compose config, docker build, health probe, build/test/lint/tsc) is green; a
+full prod-deploy on the box is **pending** these:
+
+1. **Data-plane base URL var name.** The app's C1/C3/C4 clients read `FORGE_EVENTS_URL`, but the
+   generated compose sets `FORGE_DATA_PLANE_URL` on `web`. As generated, prod loses data-plane
+   reachability (events, notifications, agent planning degrade to unavailable). Reconcile the var name
+   (platform: emit `FORGE_EVENTS_URL`, or the app reads `FORGE_DATA_PLANE_URL`).
+2. **P6 · secret vault for the data-plane.** The generated data-plane sidecar has **no**
+   `FORGE_SECRETS_KEY` and no `ANTHROPIC_API_KEY` (the key is injected only into `web`), so the
+   sidecar cannot decrypt the C5 vault the agent runtime (C1) reads in prod. `agent-run` will 503.
+3. **C2 jobs file not mounted** (see above).
+
+Also: `forge productionize` emits the stack to `app/compose.prod.yaml`, while `forge deploy`'s
+`--compose-file` default is `compose.prod.yaml` at the repo root — `make deploy` now passes
+`--compose-file app/compose.prod.yaml` explicitly to bridge that. Confirm the roll on the box.
