@@ -58,7 +58,7 @@ The three catalogs below are annotated with live status. Legend: ✅ built · �
 | Habit | ✅ v4 | daily/weekly, per-period check-ins, streak-as-heat |
 | Agent Task | ✅ v3 | a persisted agent run; platform-owned via C1 |
 | Artifact | ✅ v3 | an agent's produced result; platform-owned via C1 |
-| **User / Account** | ⬜ ▲ | identity & per-resource ownership; **near-term** — should come from a Forge Identity capability (§5 Epic M) |
+| **User / Account** | 🟡 v0.6 | identity **shipped** — the app is gated on Forge's hosted Identity/Auth (C10, adopted `0.6.0`); per-resource *ownership* is next (§5 Epic M · M2 / C11, in progress) |
 | **Project** | ⬜ | group related Goals + roll up progress — the nearest unbuilt idea |
 | **Document / Note** | ⬜ | the "second brain" surface (§5 Epic B) |
 | **Idea** | ⬜ | lightweight capture, promotable to Goal/Task |
@@ -81,12 +81,15 @@ Finance Assistant ⬜ · Travel Planner ⬜.
 
 ## 3. Implementation status — where we actually are
 
-**Current app version: `0.5.0`** (SemVer in `app/package.json` / [CHANGELOG.md](CHANGELOG.md)). Six
+**Current app version: `0.6.0`** (SemVer in `app/package.json` / [CHANGELOG.md](CHANGELOG.md)). Six
 pages, fifteen API routes, Postgres-persisted, Next.js App Router + TypeScript + Vitest.
 
-> **⚠ Security status: no authentication.** Every page and API route is currently **open** — there is
-> no login, no user concept, and no per-user data isolation — and the app is deployed publicly. This
-> is the top near-term gap; closing it is **Epic M (§5)**, prioritized under "Do soon" (§6).
+> **✅ Security status: authenticated.** The app is **gated** — every page and `/api/*` route requires a
+> valid session, served by the platform's hosted **Identity / Auth** capability (**C10**, adopted
+> `0.6.0`: Google OAuth + email/password, multi-user signup, a hosted login surface, a session
+> middleware). `/api/cron/*` is service-token'd; `/api/health` stays public. **Still open:** per-user
+> data *ownership* — resources aren't yet scoped to their owner — which is the next step, **Epic M · M2**
+> (authorization, **C11**, in progress; §5/§6).
 
 ### 3a. Product feature milestones (what a user can do)
 
@@ -192,11 +195,11 @@ Each feature is a small, coherent unit that builds on the Goals/Tasks/Habits/Tim
 forces a specific Forge capability. Because Wave 1 (C1–C8) is built, the pressure now points at
 **Wave 2** capabilities — the ones the domain model always implied but hasn't needed until now:
 
-> **Wave 2 capability frontier (what these features will force into Forge):** **Identity / auth ▲** ·
+> **Wave 2 capability frontier (what these features will force into Forge):** **Identity / auth ✅** ·
 > **Permissions / access control ▲** · **Search / indexing** · **File & blob storage** ·
 > **Embeddings / vector search (RAG)** · **OAuth + external integrations / webhooks** · **Push /
 > email delivery channels** · **Sync / offline** · **richer multi-step agent orchestration +
-> web/tool access**. *(▲ = now near-term: the app is live and open — see Epic M.)*
+> web/tool access**. *(✅ Identity/auth shipped via **C10** — `0.6.0`; ▲ Permissions is next — Epic M · M2, filed **C11**.)*
 
 Per-feature format: **what** · *User can:* · *Introduces:* (resources/capabilities/agents) ·
 *Pressures Forge →* (the Wave-2 capability) · *Borrow from:* · *Spec seed:* (data + key acceptance
@@ -388,23 +391,29 @@ A rich, on-trend vertical that the domain model already names.
   parsing + hooks into Search. · *Borrow from:* Todoist NL quick-add, Akiflow command bar, Superhuman.
   · *Size M · ◐*
 
-### Epic M · Identity, Authentication & Authorization — *▲ near-term priority; forces Identity + Permissions*
+### Epic M · Identity, Authentication & Authorization — *▲ M1 shipped; M2 (authorization) in progress*
 
-**Why now (genuinely pressured, not roadmap-driven).** forge-os is *deployed* (behind Traefik at
-`forge-os.mardash.ai`) with **no authentication** — anyone who reaches the URL has full access to
+**Status.** **M1 (Authentication) is shipped/adopted** (`0.6.0`) — the app is gated on the platform's
+hosted **Identity / Auth** capability (**C10**). **M2 (per-user ownership / authorization) is next** —
+filed as **C11** and in progress. **M3 (sharing)** stays deferred.
+
+**Why it happened (genuinely pressured, not roadmap-driven).** forge-os went *live* (behind Traefik at
+`forge-os.mardash.ai`) with **no authentication** — anyone who reached the URL had full access to
 every feature and every user's data. Prior features listed "no auth" as a non-goal because the app
-was local/single-user; now that it's live, **open access is a real problem to close soon.** This is
-the litmus test firing: the app hit a wall, and Forge should grow an **Identity / Auth** capability
-to meet it.
+was local/single-user; once it was live, **open access became a real problem.** That is the litmus
+test firing: the app hit a wall, and Forge grew an **Identity / Auth** capability (C10) to meet it.
 
-> **Wind-tunnel guidance.** Authentication is textbook *generic machinery* — do **not** hand-roll
-> sessions/passwords/OAuth in `./app`. At **Gate 0** this should file an **Identity / Auth** platform
-> capability (user store, login, session/cookie management, OAuth/passkeys) that the app consumes,
-> exactly as C1–C8 were adopted. If a gate is needed *today* while that capability is built, the
-> cheapest interim stopgap is a **coarse edge gate** (Traefik basic-auth or one shared passphrase) —
-> explicitly a stopgap, tracked for removal the moment real auth lands.
+> **Wind-tunnel guidance (this is how it played out).** Authentication is textbook *generic
+> machinery* — so it was **not** hand-rolled in `./app`. At **Gate 0** it filed an **Identity / Auth**
+> platform capability (user store, login, session/cookie management, OAuth/passkeys) that the app
+> consumes, exactly as C1–C8 were adopted — delivered as **C10** and adopted in `0.6.0`. No interim
+> coarse edge gate (Traefik basic-auth / shared passphrase) was needed; the real capability landed
+> first.
 
-- **M1 · Authentication — gate the app** — require login to use forge-os at all. · *User can:* sign
+- **M1 · Authentication — gate the app** — ✅ **shipped / adopted (`0.6.0`, via C10).** The app is
+  fully gated on the platform's hosted Identity/Auth: Google OAuth + email/password, multi-user
+  signup, a hosted login surface, and a session middleware over **all** routes; `/api/cron/*` is
+  service-token'd and `/api/health` stays public. *(Spec of record below.)* · *User can:* sign
   in (email + password / magic link / OAuth Google or GitHub / passkey), stay signed in, sign out;
   unauthenticated requests to any page or `/api/*` route are rejected or redirected to login. ·
   *Introduces:* a **User / account** identity + sessions. · *Pressures Forge →* **Identity / Auth**
@@ -414,8 +423,9 @@ to meet it.
   goals/tasks/habits/events/etc. are assigned to the first (owner) user. AC: no route serves data
   without a valid session; a fresh visitor sees a login screen; sign-out clears the session.
   Non-goals (this feature): sharing, roles beyond a single owner. · *Size L · ●*
-- **M2 · Authorization — ownership & access control** — every resource belongs to a user; you can
-  only read or mutate your own. · *User can:* trust that their Goals/Tasks/Notes/Habits are private;
+- **M2 · Authorization — ownership & access control** — ▲ **next (in progress, filed as C11).** Every
+  resource belongs to a user; you can only read or mutate your own. · *User can:* trust that their
+  Goals/Tasks/Notes/Habits are private;
   (optional) issue scoped API tokens. · *Introduces:* an **owner** on every resource + enforcement at
   the data layer; the **Authorization** capability. · *Pressures Forge →* **Permissions / access
   control**. · *Spec seed:* `owner_id` (FK → `users`) on every table; every query filters by the
@@ -457,13 +467,11 @@ to meet it.
 The wind-tunnel goal is to keep each wave forcing a *clear, generic* new Forge capability while
 staying genuinely useful. Ordered by leverage:
 
-**▲ Do soon — Authentication & Authorization (Epic M · M1 + M2).** The app is live and **open** —
-gating access is a security priority, not a roadmap nicety, so this jumps the queue. Prioritize **M1**
-(login gate) and **M2** (per-user ownership) ahead of, or in parallel with, the feature set below.
-It also forces the **Identity / Auth** + **Permissions** capabilities, so it doubles as a
-high-value wind-tunnel wave. (Sharing/collaboration — **M3** — stays deferred until multi-user is
-genuinely needed.) An interim coarse edge gate can close public access *today* while the real
-capability is built (see Epic M).
+**▲ In progress — Authentication & Authorization (Epic M).** **M1 (login gate) is shipped / adopted**
+(`0.6.0`, via the **Identity / Auth** capability **C10**) — the app is no longer open. **M2 (per-user
+ownership)** is **next / in progress** (filed as **C11**), forcing the **Permissions / access control**
+capability. Together they double as a high-value wind-tunnel wave. (Sharing/collaboration — **M3** —
+stays deferred until multi-user is genuinely needed.)
 
 **▶ Recommended next feature set — "Knowledge & Search" (Epics A + B).** Ship **A1 Projects → A2 Areas → B1
 Notes → B2 Quick Capture → B5 Global Search.** Why this set:
@@ -488,8 +496,9 @@ Notes → B2 Quick Capture → B5 Global Search.** Why this set:
 **Deferred until pressured** (per the litmus test — build when a shipped feature *needs* them, not
 because the roadmap lists them): **Sharing/collaboration (M3)**, **Mobile/Offline (N)**, **Finance
 (I)**, **Travel (J)**, **Meetings audio (F2)**. Each is a large capability jump; let a smaller
-feature create the demand first. *(Note: **authentication & authorization — M1/M2 — is no longer
-deferred**; the live-and-open app already created the demand. See "Do soon" above.)*
+feature create the demand first. *(Note: **authentication — M1 — has shipped** (C10, `0.6.0`) and
+**authorization — M2 — is in progress** (C11); the live app already created the demand. See "In
+progress" above.)*
 
 ---
 

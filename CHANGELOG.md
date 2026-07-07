@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.1] — 2026-07-07
+
+### Changed
+
+- **Un-stale `PROJECT_IDEA.md` now that Identity / Auth (C10) is adopted.** The doc's security status
+  flips from "**no authentication** / open app" to **authenticated** — the app is gated on the
+  platform's hosted Identity/Auth (Google OAuth + email/password, multi-user signup, a hosted login
+  surface, a session middleware; `/api/cron/*` service-token'd, `/api/health` public). **Epic M · M1
+  (Authentication)** is marked **shipped / adopted (`0.6.0`)** across §2/§3/§5/§6, and **M2 (per-user
+  ownership / authorization)** is noted as **next / in progress** (filed as **C11**). Only stale
+  status/security lines change — the human's authored vision/prose is untouched.
+- **Amend the `add-a-feature` skill to keep `PROJECT_IDEA.md` current going forward.** Step 6 ("Record
+  the platform pressure — backstop") and the loop diagram now require, on finishing a feature, a
+  lightweight **`PROJECT_IDEA.md` status touch-up**: mark the feature/epic shipped and correct any
+  line the feature makes stale (especially security-relevant ones), so the product doc never drifts
+  from reality. Step 7's commit list includes it.
+
 ## [0.6.0] — 2026-07-07
 
 ### Added
@@ -310,7 +327,8 @@ _This changelog started mid-project: the Goals & Tasks core and the Timeline →
 Reminders → Planner Agent → Habits features predate it; see `PROJECT_IDEA.md`'s roadmap and the git
 history for that record._
 
-[Unreleased]: https://github.com/mardash-ai/forge-os/compare/v0.6.0...HEAD
+[Unreleased]: https://github.com/mardash-ai/forge-os/compare/v0.6.1...HEAD
+[0.6.1]: https://github.com/mardash-ai/forge-os/compare/v0.6.0...v0.6.1
 [0.6.0]: https://github.com/mardash-ai/forge-os/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/mardash-ai/forge-os/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/mardash-ai/forge-os/compare/v0.3.1...v0.4.0

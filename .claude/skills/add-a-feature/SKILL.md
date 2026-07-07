@@ -30,7 +30,8 @@ This skill owns the **authoring workflow**. It leans on two others:
 3. Build       → write files under ./app following the conventions below (only the app-local scope Gate 0 approved)
 4. Validate    → ./forge lint / build / test   (Docker), self-heal via ./forge explain
 5. Verify      → drive the real flow: dev server + exercise it (API calls, restart, screenshots)
-6. Record      → update PLATFORM_CAPABILITIES.md with any platform pressure Gate 0 missed  (backstop)
+6. Record      → keep the docs honest: touch up PROJECT_IDEA.md status (feature/epic shipped; fix any
+               line it makes stale) + update PLATFORM_CAPABILITIES.md for platform pressure Gate 0 missed (backstop)
 7. Done        → lint/build/test green AND every acceptance criterion observably holds
 ```
 
@@ -231,6 +232,17 @@ Gate 0 didn't already route?* Then —
   extraction is real;
 - hit a wall Forge can't do at all → a **🔴 Absent** row.
 
+**Then keep `PROJECT_IDEA.md` honest — always, even when a feature added no platform pressure.** That
+doc is the product's status source of truth, so a shipped feature must be reflected there or it
+drifts. This is a lightweight **status touch-up, not a rewrite** — leave the human's authored
+vision/prose intact; only the status/security lines change:
+
+- **Mark the feature/epic shipped** — flip its §2 catalog / §3 milestone status (and the matching §5
+  backlog bullet) from ⬜/🟡 to shipped, noting the version it landed in.
+- **Correct any status line the feature makes stale — especially security-relevant ones.** If you just
+  shipped auth, the "no authentication / open app" line is now false — fix it. If you added a
+  resource, update its §2 row. Don't leave the doc asserting something the feature just changed.
+
 Keep domain logic (the app's own resources and rules) out of the ledger — only generic, shareable
 machinery earns a row. A feature that added **no** platform pressure is a signal it may be pure app
 surface rather than a wind-tunnel feature — say so. Append to the Handoff log and follow that
@@ -245,8 +257,8 @@ file's *edit discipline* (fill only the forge-os-owned fields).
 
 Report success only when lint/build/test are green **and** you've observed every acceptance
 criterion holding in the running app. Note the `build_…`/`test_…`/`check_…` ids. Commit the
-spec (`specs/<feature-slug>/`) and the `PLATFORM_CAPABILITIES.md` update alongside the code under
-`./app/`.
+spec (`specs/<feature-slug>/`), the `PROJECT_IDEA.md` status touch-up (step 6), and any
+`PLATFORM_CAPABILITIES.md` update alongside the code under `./app/`.
 
 ---
 
