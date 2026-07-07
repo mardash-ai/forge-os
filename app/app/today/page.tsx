@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { listDueTasks } from '@/lib/db';
+import { requireOwner } from '@/lib/auth';
 import { groupByBucket, relativeDueLabel } from '@/lib/schedule';
 import { SiteNav } from '@/app/components/SiteNav';
 import { StrikeTask } from '@/app/components/StrikeTask';
@@ -8,7 +9,8 @@ export const dynamic = 'force-dynamic';
 
 export default async function TodayPage() {
   const now = new Date();
-  const tasks = await listDueTasks();
+  const owner = await requireOwner();
+  const tasks = await listDueTasks(owner);
   const groups = groupByBucket(tasks, now);
 
   return (

@@ -1,6 +1,10 @@
 // Client for the Forge application event log (capability C3). The app emits its OWN
 // domain events to Forge and reads them back, replacing the local `events` table.
 //
+// Per-user ownership (capability C11): every call carries the caller's opaque `owner`
+// (the C10 session `userId`). The platform STAMPS it on write and FILTERS to it on read,
+// so a cross-owner read returns empty — one user never sees another user's timeline.
+//
 // Best-effort by contract: a failed emit must NEVER break the mutation that triggered
 // it, and a failed read degrades to an empty feed — never a crash. The base URL is
 // FORGE_EVENTS_URL (dev: the control plane; prod: the data-plane sidecar). The multi-app
@@ -33,6 +37,7 @@ function appName(): string | undefined {
  * TIMEOUT_MS, so a slow or absent event log can't break — or stall — the real mutation.
  */
 export async function emitAppEvent(input: {
+  owner: string;
   type: EventType;
   subject?: string | null;
   data?: EventData;
@@ -46,6 +51,7 @@ export async function emitAppEvent(input: {
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
         ...(app ? { app } : {}),
+        owner: input.owner,
         type: input.type,
         subject: input.subject ?? undefined,
         data: input.data ?? {},
@@ -74,13 +80,14 @@ export function toTimelineEvent(e: AppEvent): TimelineEvent {
  * Recent events newest-first as TimelineEvents, optionally filtered to one goal (subject).
  * Degrades to `[]` on any failure (unset URL, unreachable log, non-2xx, timeout).
  */
-export async function listTimelineEvents(opts: { goalId?: string; limit?: number } = {}): Promise<TimelineEvent[]> {
+export async function listTimelineEvents(opts: { owner: string; goalId?: string; limit?: number }): Promise<TimelineEvent[]> {
   const base = baseUrl();
   if (!base) return [];
   const limit = Math.min(Math.max(opts.limit ?? 100, 1), 500);
   const params = new URLSearchParams();
   const app = appName();
   if (app) params.set('app', app);
+  params.set('owner', opts.owner);
   if (opts.goalId) params.set('subject', opts.goalId);
   params.set('limit', String(limit));
   try {
@@ -100,12 +107,13 @@ export async function listTimelineEvents(opts: { goalId?: string; limit?: number
  * Latest activity timestamp per subject (goalId), for cold-goal detection.
  * Degrades to `{}` on any failure.
  */
-export async function latestActivityBySubject(): Promise<Record<string, string>> {
+export async function latestActivityBySubject(owner: string): Promise<Record<string, string>> {
   const base = baseUrl();
   if (!base) return {};
   const params = new URLSearchParams();
   const app = appName();
   if (app) params.set('app', app);
+  params.set('owner', owner);
   try {
     const res = await fetch(`${base}/app-events/latest?${params.toString()}`, {
       cache: 'no-store',

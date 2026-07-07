@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { getGoal } from '@/lib/db';
+import { requireOwner } from '@/lib/auth';
 import { HeatBar } from '@/app/components/HeatBar';
 import { AddTaskForm } from '@/app/components/AddTaskForm';
 import { CompleteButton } from '@/app/components/CompleteButton';
@@ -11,7 +12,9 @@ import { PlanTasks } from '@/app/components/PlanTasks';
 export const dynamic = 'force-dynamic';
 
 export default async function GoalPage({ params }: { params: { id: string } }) {
-  const goal = await getGoal(params.id);
+  const owner = await requireOwner();
+  // Owner-scoped: another user's goal is absent → notFound() (a 404 page, never a 403).
+  const goal = await getGoal(owner, params.id);
   if (!goal) notFound();
 
   return (

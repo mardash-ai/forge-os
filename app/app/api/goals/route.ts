@@ -1,11 +1,13 @@
 import { NextResponse } from 'next/server';
 import { createGoal, listGoals } from '@/lib/db';
+import { requireOwner } from '@/lib/auth';
 import { validateTitle } from '@/lib/goals';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET() {
-  const goals = await listGoals();
+  const owner = await requireOwner();
+  const goals = await listGoals(owner);
   return NextResponse.json(goals);
 }
 
@@ -24,6 +26,7 @@ export async function POST(request: Request) {
   }
 
   const description = typeof fields.description === 'string' ? fields.description.trim() : '';
-  const goal = await createGoal(title.value, description);
+  const owner = await requireOwner();
+  const goal = await createGoal(owner, title.value, description);
   return NextResponse.json(goal, { status: 201 });
 }

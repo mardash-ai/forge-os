@@ -1,12 +1,14 @@
 import { NextResponse } from 'next/server';
 import { createHabit, listHabits } from '@/lib/db';
+import { requireOwner } from '@/lib/auth';
 import { validateTitle } from '@/lib/goals';
 import { isCadence } from '@/lib/habits';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET() {
-  const habits = await listHabits(new Date());
+  const owner = await requireOwner();
+  const habits = await listHabits(owner, new Date());
   return NextResponse.json(habits);
 }
 
@@ -27,6 +29,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Cadence must be "daily" or "weekly".' }, { status: 400 });
   }
 
-  const habit = await createHabit(title.value, rec.cadence);
+  const owner = await requireOwner();
+  const habit = await createHabit(owner, title.value, rec.cadence);
   return NextResponse.json(habit, { status: 201 });
 }

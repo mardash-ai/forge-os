@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { addTask } from '@/lib/db';
+import { requireOwner } from '@/lib/auth';
 import { validateTitle } from '@/lib/goals';
 
 export const dynamic = 'force-dynamic';
@@ -17,7 +18,8 @@ export async function POST(request: Request, { params }: { params: { id: string 
     return NextResponse.json({ error: 'A task needs a title.' }, { status: 400 });
   }
 
-  const task = await addTask(params.id, title.value);
+  const owner = await requireOwner();
+  const task = await addTask(owner, params.id, title.value);
   if (!task) {
     return NextResponse.json({ error: 'Goal not found.' }, { status: 404 });
   }

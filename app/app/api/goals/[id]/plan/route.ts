@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getGoal } from '@/lib/db';
+import { requireOwner } from '@/lib/auth';
 import { runAgentTask, AgentRunUnavailableError } from '@/lib/forge-agent';
 import {
   PLANNER_MODEL,
@@ -17,13 +18,15 @@ export const dynamic = 'force-dynamic';
 // post-validates the (untrusted) result. The human reviews and accepts the proposals on the
 // client; nothing is written to `tasks` here.
 export async function POST(_request: Request, { params }: { params: { id: string } }) {
-  const goal = await getGoal(params.id);
+  const owner = await requireOwner();
+  const goal = await getGoal(owner, params.id);
   if (!goal) {
     return NextResponse.json({ error: 'Goal not found.' }, { status: 404 });
   }
 
   try {
     const task = await runAgentTask({
+      owner,
       capability: 'planner',
       system: buildPlannerSystemPrompt(),
       input: buildPlannerUserPrompt({ title: goal.title, description: goal.description }),

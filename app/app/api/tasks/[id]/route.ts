@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { setTaskDueDate } from '@/lib/db';
+import { requireOwner } from '@/lib/auth';
 import { isValidDateString } from '@/lib/schedule';
 
 export const dynamic = 'force-dynamic';
@@ -22,7 +23,8 @@ export async function PATCH(request: Request, { params }: { params: { id: string
     return NextResponse.json({ error: 'dueDate must be a date (YYYY-MM-DD) or null.' }, { status: 400 });
   }
 
-  const task = await setTaskDueDate(params.id, dueDate);
+  const owner = await requireOwner();
+  const task = await setTaskDueDate(owner, params.id, dueDate);
   if (!task) {
     return NextResponse.json({ error: 'Task not found.' }, { status: 404 });
   }

@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import type { GoalWithProgress } from '@/lib/goals';
 import { listGoals } from '@/lib/db';
+import { requireOwner } from '@/lib/auth';
 import { HeatBar } from '@/app/components/HeatBar';
 import { NewGoal } from '@/app/components/NewGoal';
 import { SiteNav } from '@/app/components/SiteNav';
@@ -8,7 +9,8 @@ import { SiteNav } from '@/app/components/SiteNav';
 export const dynamic = 'force-dynamic';
 
 export default async function HomePage() {
-  const goals = await listGoals();
+  const owner = await requireOwner();
+  const goals = await listGoals(owner);
   const active = goals
     .filter((g) => g.status === 'active')
     .sort((a, b) => b.progress - a.progress);

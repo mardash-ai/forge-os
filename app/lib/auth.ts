@@ -21,7 +21,9 @@ import { jwtVerify } from 'jose';
 /** Name of the platform-issued session cookie. */
 export const SESSION_COOKIE = 'forge_session';
 
-/** The identity we gate on. Per-user row ownership is C11 (later) — not here. */
+/** The identity we gate on. `userId` is also the per-user OWNER (capability C11):
+ *  every app-domain row and every platform-store record (C1/C3/C4) is stamped with
+ *  and filtered to it, so users are fully isolated. */
 export type Session = { userId: string; email: string };
 
 function sessionKey(): Uint8Array | null {
@@ -75,4 +77,18 @@ export async function requireUser(): Promise<Session> {
   const { redirect } = await import('next/navigation');
   // redirect() throws (returns `never`) — returning it keeps this typed as Session.
   return redirect('/auth/login');
+}
+
+/**
+ * The current user's OWNER id (capability C11) — the value we stamp on / filter every
+ * app-domain row and platform-store call by. The middleware gate guarantees a valid
+ * session on every non-public page and /api/* route, so in practice this always resolves;
+ * it still FAILS CLOSED (throws) if ever reached without one, so a coding slip can never
+ * silently run an owner-less (cross-user) query. Callers in a page/route already sit behind
+ * that gate — use this to obtain the owner to pass into the db + client layers.
+ */
+export async function requireOwner(): Promise<string> {
+  const session = await getSession();
+  if (!session) throw new Error('requireOwner: no session on a gated request');
+  return session.userId;
 }

@@ -10,10 +10,11 @@ type Page = 'floor' | 'today' | 'habits' | 'log' | 'alerts';
 // The account tail links to the platform's HOSTED auth (C10) — sign in/out live
 // there; we render no auth UI of our own.
 export async function SiteNav({ current }: { current: Page }) {
-  const [count, session] = await Promise.all([
-    syncNotifications(new Date()).then((n) => n.length),
-    getSession(),
-  ]);
+  // The badge count is the caller's OWN live inbox (C11), so resolve the session first
+  // and reconcile scoped to their owner id. (SiteNav only renders on gated pages, so a
+  // session is always present; stay null-tolerant anyway — no session, no badge.)
+  const session = await getSession();
+  const count = session ? (await syncNotifications(session.userId, new Date())).length : 0;
   return (
     <nav className="site-nav" aria-label="Primary">
       <Link href="/" className={current === 'floor' ? 'on' : ''} aria-current={current === 'floor' ? 'page' : undefined}>

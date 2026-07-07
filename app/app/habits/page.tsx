@@ -1,4 +1,5 @@
 import { listHabits } from '@/lib/db';
+import { requireOwner } from '@/lib/auth';
 import { streakTier, unitLabel } from '@/lib/habits';
 import { SiteNav } from '@/app/components/SiteNav';
 import { NewHabit } from '@/app/components/NewHabit';
@@ -8,7 +9,8 @@ import { DeleteHabit } from '@/app/components/DeleteHabit';
 export const dynamic = 'force-dynamic';
 
 export default async function HabitsPage() {
-  const habits = await listHabits(new Date());
+  const owner = await requireOwner();
+  const habits = await listHabits(owner, new Date());
   const lit = habits.filter((h) => h.doneThisPeriod).length;
 
   return (

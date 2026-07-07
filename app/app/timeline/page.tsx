@@ -1,12 +1,14 @@
 import Link from 'next/link';
 import { listTimelineEvents } from '@/lib/forge-events';
+import { requireOwner } from '@/lib/auth';
 import { describeEvent, formatTime, groupByDay, isWarm, sparkKind } from '@/lib/timeline';
 import { SiteNav } from '@/app/components/SiteNav';
 
 export const dynamic = 'force-dynamic';
 
 export default async function TimelinePage() {
-  const events = await listTimelineEvents({ limit: 100 });
+  const owner = await requireOwner();
+  const events = await listTimelineEvents({ owner, limit: 100 });
   const groups = groupByDay(events, new Date());
 
   return (

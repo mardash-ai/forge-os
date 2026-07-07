@@ -58,7 +58,7 @@ The three catalogs below are annotated with live status. Legend: ✅ built · �
 | Habit | ✅ v4 | daily/weekly, per-period check-ins, streak-as-heat |
 | Agent Task | ✅ v3 | a persisted agent run; platform-owned via C1 |
 | Artifact | ✅ v3 | an agent's produced result; platform-owned via C1 |
-| **User / Account** | 🟡 v0.6 | identity **shipped** — the app is gated on Forge's hosted Identity/Auth (C10, adopted `0.6.0`); per-resource *ownership* is next (§5 Epic M · M2 / C11, in progress) |
+| **User / Account** | ✅ v0.7 | identity **shipped** (C10, `0.6.0`) **and** per-user *ownership* **shipped** — every resource is owner-scoped and users are fully isolated (§5 Epic M · M2 / C11, adopted `0.7.0`) |
 | **Project** | ⬜ | group related Goals + roll up progress — the nearest unbuilt idea |
 | **Document / Note** | ⬜ | the "second brain" surface (§5 Epic B) |
 | **Idea** | ⬜ | lightweight capture, promotable to Goal/Task |
@@ -81,15 +81,18 @@ Finance Assistant ⬜ · Travel Planner ⬜.
 
 ## 3. Implementation status — where we actually are
 
-**Current app version: `0.6.0`** (SemVer in `app/package.json` / [CHANGELOG.md](CHANGELOG.md)). Six
+**Current app version: `0.7.0`** (SemVer in `app/package.json` / [CHANGELOG.md](CHANGELOG.md)). Six
 pages, fifteen API routes, Postgres-persisted, Next.js App Router + TypeScript + Vitest.
 
-> **✅ Security status: authenticated.** The app is **gated** — every page and `/api/*` route requires a
-> valid session, served by the platform's hosted **Identity / Auth** capability (**C10**, adopted
-> `0.6.0`: Google OAuth + email/password, multi-user signup, a hosted login surface, a session
-> middleware). `/api/cron/*` is service-token'd; `/api/health` stays public. **Still open:** per-user
-> data *ownership* — resources aren't yet scoped to their owner — which is the next step, **Epic M · M2**
-> (authorization, **C11**, in progress; §5/§6).
+> **✅ Security status: authenticated + fully multi-user isolated.** The app is **gated** — every page and
+> `/api/*` route requires a valid session, served by the platform's hosted **Identity / Auth** capability
+> (**C10**, adopted `0.6.0`: Google OAuth + email/password, multi-user signup, a hosted login surface, a
+> session middleware). `/api/cron/*` is service-token'd; `/api/health` stays public. **Per-user data
+> *ownership* is now shipped too** — every resource is scoped to its owner (the session `userId`): the app's
+> own tables carry an `owner_id` and every query filters by the session user (a cross-owner by-id fetch is a
+> 404, never a 403), and the shared platform stores (C1/C3/C4) stamp + filter by the same opaque `owner`.
+> Two users share the deployment yet see entirely separate apps (**Epic M · M2**, authorization, **C11**,
+> adopted `0.7.0`, verified live with two users; §5/§6).
 
 ### 3a. Product feature milestones (what a user can do)
 
@@ -196,10 +199,10 @@ forces a specific Forge capability. Because Wave 1 (C1–C8) is built, the press
 **Wave 2** capabilities — the ones the domain model always implied but hasn't needed until now:
 
 > **Wave 2 capability frontier (what these features will force into Forge):** **Identity / auth ✅** ·
-> **Permissions / access control ▲** · **Search / indexing** · **File & blob storage** ·
+> **Permissions / access control ✅** · **Search / indexing** · **File & blob storage** ·
 > **Embeddings / vector search (RAG)** · **OAuth + external integrations / webhooks** · **Push /
 > email delivery channels** · **Sync / offline** · **richer multi-step agent orchestration +
-> web/tool access**. *(✅ Identity/auth shipped via **C10** — `0.6.0`; ▲ Permissions is next — Epic M · M2, filed **C11**.)*
+> web/tool access**. *(✅ Identity/auth shipped via **C10** — `0.6.0`; ✅ Permissions / per-user ownership shipped via **C11** — Epic M · M2, adopted `0.7.0`.)*
 
 Per-feature format: **what** · *User can:* · *Introduces:* (resources/capabilities/agents) ·
 *Pressures Forge →* (the Wave-2 capability) · *Borrow from:* · *Spec seed:* (data + key acceptance
@@ -391,11 +394,12 @@ A rich, on-trend vertical that the domain model already names.
   parsing + hooks into Search. · *Borrow from:* Todoist NL quick-add, Akiflow command bar, Superhuman.
   · *Size M · ◐*
 
-### Epic M · Identity, Authentication & Authorization — *▲ M1 shipped; M2 (authorization) in progress*
+### Epic M · Identity, Authentication & Authorization — *✅ M1 + M2 shipped; M3 (sharing) deferred*
 
 **Status.** **M1 (Authentication) is shipped/adopted** (`0.6.0`) — the app is gated on the platform's
-hosted **Identity / Auth** capability (**C10**). **M2 (per-user ownership / authorization) is next** —
-filed as **C11** and in progress. **M3 (sharing)** stays deferred.
+hosted **Identity / Auth** capability (**C10**). **M2 (per-user ownership / authorization) is shipped/adopted**
+(`0.7.0`) — every resource is owner-scoped and users are fully isolated, via the platform's **Permissions /
+per-user ownership** capability (**C11**); verified live with two users. **M3 (sharing)** stays deferred.
 
 **Why it happened (genuinely pressured, not roadmap-driven).** forge-os went *live* (behind Traefik at
 `forge-os.mardash.ai`) with **no authentication** — anyone who reached the URL had full access to
@@ -423,14 +427,19 @@ test firing: the app hit a wall, and Forge grew an **Identity / Auth** capabilit
   goals/tasks/habits/events/etc. are assigned to the first (owner) user. AC: no route serves data
   without a valid session; a fresh visitor sees a login screen; sign-out clears the session.
   Non-goals (this feature): sharing, roles beyond a single owner. · *Size L · ●*
-- **M2 · Authorization — ownership & access control** — ▲ **next (in progress, filed as C11).** Every
-  resource belongs to a user; you can only read or mutate your own. · *User can:* trust that their
-  Goals/Tasks/Notes/Habits are private;
-  (optional) issue scoped API tokens. · *Introduces:* an **owner** on every resource + enforcement at
-  the data layer; the **Authorization** capability. · *Pressures Forge →* **Permissions / access
-  control**. · *Spec seed:* `owner_id` (FK → `users`) on every table; every query filters by the
-  session user; return **404 (not 403)** for another user's id so existence never leaks. AC: user A
-  can never see or mutate user B's resources through any page or route; the health check and cron
+- **M2 · Authorization — ownership & access control** — ✅ **shipped / adopted (`0.7.0`, via C11).** Every
+  resource belongs to a user; you can only read or mutate your own. The app's own tables
+  (`goals/tasks/habits/habit_checkins/habit_streak_breaks`) carry an `owner_id` and **every** query filters
+  by the session `userId`, returning **404 (not 403)** for another user's id so existence never leaks;
+  children inherit their parent's owner. The shared platform stores (C1 agent-runs, C3 events, C4
+  notifications) take the same opaque `owner` — write stamps it, read filters to it — so timelines and
+  inboxes are per-user too. Migration on cutover: existing rows backfilled to the seeded owner and
+  owner-less shared-store records claimed via `forge owner claim-legacy`. **Verified live with two users:**
+  the owner sees their own data; a second user sees an entirely empty app; each user's by-id fetch of the
+  other's goal is a 404. · *User can:* trust that their Goals/Tasks/Notes/Habits are private. ·
+  *Introduces:* an **owner** on every resource + enforcement at the data layer; the **Permissions /
+  per-user ownership** capability. · *Pressured Forge →* **Permissions / access control** (**C11**). AC met:
+  user A can never see or mutate user B's resources through any page or route; the health check and cron
   endpoints stay appropriately unauthenticated/service-scoped. Non-goals: shared/role-based access
   (that's M3). · *Size M–L · ●*
 - **M3 · Sharing & collaboration** — invite others to a Goal/Project, assign Tasks, comment; roles
@@ -467,11 +476,12 @@ test firing: the app hit a wall, and Forge grew an **Identity / Auth** capabilit
 The wind-tunnel goal is to keep each wave forcing a *clear, generic* new Forge capability while
 staying genuinely useful. Ordered by leverage:
 
-**▲ In progress — Authentication & Authorization (Epic M).** **M1 (login gate) is shipped / adopted**
+**✅ Shipped — Authentication & Authorization (Epic M).** **M1 (login gate) is shipped / adopted**
 (`0.6.0`, via the **Identity / Auth** capability **C10**) — the app is no longer open. **M2 (per-user
-ownership)** is **next / in progress** (filed as **C11**), forcing the **Permissions / access control**
-capability. Together they double as a high-value wind-tunnel wave. (Sharing/collaboration — **M3** —
-stays deferred until multi-user is genuinely needed.)
+ownership) is now shipped / adopted** (`0.7.0`, via the **Permissions / per-user ownership** capability
+**C11**), forcing the **Permissions / access control** capability — the app is now fully multi-user and
+isolated (verified live with two users). Together they were a high-value wind-tunnel wave.
+(Sharing/collaboration — **M3** — stays deferred until multi-user collaboration is genuinely needed.)
 
 **▶ Recommended next feature set — "Knowledge & Search" (Epics A + B).** Ship **A1 Projects → A2 Areas → B1
 Notes → B2 Quick Capture → B5 Global Search.** Why this set:
@@ -497,8 +507,8 @@ Notes → B2 Quick Capture → B5 Global Search.** Why this set:
 because the roadmap lists them): **Sharing/collaboration (M3)**, **Mobile/Offline (N)**, **Finance
 (I)**, **Travel (J)**, **Meetings audio (F2)**. Each is a large capability jump; let a smaller
 feature create the demand first. *(Note: **authentication — M1 — has shipped** (C10, `0.6.0`) and
-**authorization — M2 — is in progress** (C11); the live app already created the demand. See "In
-progress" above.)*
+**authorization — M2 — has shipped** (C11, `0.7.0`); the live app already created the demand and the app
+is now fully multi-user isolated. See "Shipped" above.)*
 
 ---
 

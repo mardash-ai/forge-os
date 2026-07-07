@@ -5,6 +5,10 @@
 // already-dismissed notification never resurfaces), dismiss, clear, and the newest-first feed.
 // This replaces the old local `dismissed_notifications` table.
 //
+// Per-user ownership (capability C11): every call carries the caller's opaque `owner`
+// (the C10 session `userId`). The platform STAMPS it on write and FILTERS to it on read,
+// so one user's inbox never surfaces — or lets them dismiss/clear — another user's alerts.
+//
 // Best-effort by contract (same shape as the C3 emit): a failed upsert/dismiss/clear must
 // NEVER break the read or mutation that triggered it, and a failed feed read degrades to an
 // empty inbox — never a crash. Base URL is FORGE_EVENTS_URL (dev: the control plane; prod: the
@@ -54,6 +58,7 @@ async function post(path: string, payload: Record<string, unknown>): Promise<voi
 
 /** Upsert a currently-true notification (idempotent by `key`; preserves dismissed + created_at). */
 export async function upsertNotification(input: {
+  owner: string;
   key: string;
   title: string;
   body?: string;
@@ -61,6 +66,7 @@ export async function upsertNotification(input: {
   subject?: string | null;
 }): Promise<void> {
   await post('/notifications', {
+    owner: input.owner,
     key: input.key,
     title: input.title,
     ...(input.body !== undefined ? { body: input.body } : {}),
@@ -70,13 +76,13 @@ export async function upsertNotification(input: {
 }
 
 /** Dismiss (persists): hides the notification from the default feed until it's cleared. */
-export async function dismissNotification(key: string): Promise<void> {
-  await post('/notifications/dismiss', { key });
+export async function dismissNotification(owner: string, key: string): Promise<void> {
+  await post('/notifications/dismiss', { owner, key });
 }
 
 /** Clear: the condition no longer applies, so remove the notification entirely. */
-export async function clearNotification(key: string): Promise<void> {
-  await post('/notifications/clear', { key });
+export async function clearNotification(owner: string, key: string): Promise<void> {
+  await post('/notifications/clear', { owner, key });
 }
 
 /**
@@ -84,12 +90,13 @@ export async function clearNotification(key: string): Promise<void> {
  * `includeDismissed` to get the full store (used to find keys to clear). Degrades to `[]`
  * on any failure (unset URL, unreachable store, non-2xx, timeout) — the inbox never throws.
  */
-export async function listNotifications(opts: { includeDismissed?: boolean } = {}): Promise<PlatformNotification[]> {
+export async function listNotifications(opts: { owner: string; includeDismissed?: boolean }): Promise<PlatformNotification[]> {
   const base = baseUrl();
   if (!base) return [];
   const params = new URLSearchParams();
   const app = appName();
   if (app) params.set('app', app);
+  params.set('owner', opts.owner);
   if (opts.includeDismissed) params.set('include_dismissed', '1');
   try {
     const res = await fetch(`${base}/notifications?${params.toString()}`, {

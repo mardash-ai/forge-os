@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { dismissNotification } from '@/lib/forge-notifications';
+import { requireOwner } from '@/lib/auth';
 
 export const dynamic = 'force-dynamic';
 
@@ -17,7 +18,9 @@ export async function POST(request: Request) {
   }
 
   // Thin client over the platform notifications store (C4). Any key is accepted
-  // idempotently; the dismiss is best-effort so the inbox action never 500s.
-  await dismissNotification(key);
+  // idempotently; the dismiss is best-effort so the inbox action never 500s. Scoped to
+  // the owner (C11) so a user can only ever dismiss their OWN notifications.
+  const owner = await requireOwner();
+  await dismissNotification(owner, key);
   return NextResponse.json({ ok: true });
 }

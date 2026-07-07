@@ -7,6 +7,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.0] — 2026-07-07
+
+### Added
+
+- **Adopt the platform's Permissions / per-user ownership (C11) — the app is now fully multi-user and
+  isolated.** Every resource is scoped to its owner (the C10 session `userId`); two users share the
+  deployment yet see entirely separate apps. This closes **Epic M · M2 (authorization)** — the last gap
+  after M1 (authentication, C10). Verified **live with two users**: the owner sees their own
+  goals/tasks/habits/timeline/notifications, a second user sees an empty app, and each user's by-id fetch
+  of the other's goal is a **404**.
+  - **Own the app's own tables.** `goals`, `tasks`, `habits`, `habit_checkins`, and `habit_streak_breaks`
+    gain an `owner_id` (indexed); children inherit their parent's owner. **Every** query in `lib/db.ts`
+    filters by the session user, and a row owned by another user is simply absent — a by-id fetch returns
+    **404, never 403**, so existence never leaks. The system-wide C2 streak-finalize cron stays cross-owner
+    (it settles every user's habits and stamps each break with its habit's owner).
+  - **Pass `owner` to the shared platform stores.** The C3 events client (`lib/forge-events.ts`), C4
+    notifications client (`lib/forge-notifications.ts` / `lib/notification-inbox.ts`), and C1 agent-run
+    client (`lib/forge-agent.ts`) now send the opaque `owner` on every call — write stamps it, read filters
+    to it — so timelines, inboxes, and agent-run history are per-user too.
+  - `lib/auth.ts` — new `requireOwner()` returns the session `userId` (the owner) and fails closed; every
+    page, route, and the `SiteNav` badge resolve it and thread it into the db + client layers.
+  - **Migration (cutover).** Existing rows were backfilled to the seeded owner and owner-less shared-store
+    records claimed via `forge owner claim-legacy --app forge-os` (idempotent).
+
+### Changed
+
+- **Pin the Forge platform images to `0.15.0`** (multi-arch, arm64 confirmed) — the release that carries
+  C11's owner-aware shared stores: control-plane in `compose.yaml`, data-plane in `app/compose.yaml`,
+  `app/compose.prod.yaml`, and `app/forge.app.json`.
+- **Un-stale `PROJECT_IDEA.md`:** security status flips to **authenticated + fully multi-user isolated**;
+  **Epic M · M2 (C11)** is marked **shipped / adopted (`0.7.0`)** across §2/§3/§5/§6. Only status lines
+  change — the human's authored prose is untouched.
+
 ## [0.6.1] — 2026-07-07
 
 ### Changed
@@ -327,7 +360,8 @@ _This changelog started mid-project: the Goals & Tasks core and the Timeline →
 Reminders → Planner Agent → Habits features predate it; see `PROJECT_IDEA.md`'s roadmap and the git
 history for that record._
 
-[Unreleased]: https://github.com/mardash-ai/forge-os/compare/v0.6.1...HEAD
+[Unreleased]: https://github.com/mardash-ai/forge-os/compare/v0.7.0...HEAD
+[0.7.0]: https://github.com/mardash-ai/forge-os/compare/v0.6.1...v0.7.0
 [0.6.1]: https://github.com/mardash-ai/forge-os/compare/v0.6.0...v0.6.1
 [0.6.0]: https://github.com/mardash-ai/forge-os/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/mardash-ai/forge-os/compare/v0.4.0...v0.5.0

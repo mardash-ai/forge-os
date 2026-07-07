@@ -11,6 +11,10 @@
 // control plane needs it; the single-app sidecar infers it), exactly like the C3/C4 clients.
 // The model key reuses the C5 secret ANTHROPIC_API_KEY from Forge's vault; the app never sees it.
 //
+// Per-user ownership (capability C11): the request carries the caller's opaque `owner` (the
+// C10 session `userId`), so the platform stamps the persisted run with it and a user's run
+// history filters to their own.
+//
 // UNLIKE the C3/C4 clients this is NOT best-effort — the caller needs the result — so it
 // distinguishes two failure shapes for the route:
 //   - the dependency is UNAVAILABLE: no base URL configured, or the platform answers
@@ -52,6 +56,9 @@ function appName(): string | undefined {
 }
 
 export interface AgentRunRequest {
+  /** The caller's opaque owner (C10 session `userId`). C11: the platform stamps the run
+   *  with it so a user's durable run history filters to just their own runs. */
+  owner: string;
   /** Free-form label for the run (e.g. 'planner'); surfaces in `forge inspect agent-runs`. */
   capability: string;
   system: string;
@@ -80,6 +87,7 @@ export async function runAgentTask(req: AgentRunRequest): Promise<AgentTask> {
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
         ...(app ? { app } : {}),
+        owner: req.owner,
         capability: req.capability,
         system: req.system,
         input: req.input,

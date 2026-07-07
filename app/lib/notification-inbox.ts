@@ -21,14 +21,15 @@ import {
 } from './forge-notifications';
 import type { Notification } from './notifications';
 
-/** Reconcile the platform store with the currently-true conditions and return the live,
- *  non-dismissed inbox, most-urgent first. */
-export async function syncNotifications(now: Date): Promise<Notification[]> {
-  const derived: Notification[] = await deriveNotifications(now);
+/** Reconcile the OWNER's platform store with their currently-true conditions and return their
+ *  live, non-dismissed inbox, most-urgent first. Every derive/store call is scoped to `owner`
+ *  (C11), so a user only ever reconciles and sees their own alerts. */
+export async function syncNotifications(owner: string, now: Date): Promise<Notification[]> {
+  const derived: Notification[] = await deriveNotifications(owner, now);
   const trueKeys = new Set(derived.map((n: Notification) => n.key));
 
   // Snapshot the store BEFORE writing, to find conditions that no longer apply.
-  const stored: PlatformNotification[] = await listNotifications({ includeDismissed: true });
+  const stored: PlatformNotification[] = await listNotifications({ owner, includeDismissed: true });
 
   // Reconcile CONCURRENTLY — the platform store is now atomic under concurrent writes (per-app
   // mutex + atomic file replace, C4/P5), so all upserts + clears can fire in parallel without
@@ -37,6 +38,7 @@ export async function syncNotifications(now: Date): Promise<Notification[]> {
   await Promise.all([
     ...derived.map((n: Notification) =>
       upsertNotification({
+        owner,
         key: n.key,
         title: n.message,
         subject: n.goalId,
@@ -45,13 +47,13 @@ export async function syncNotifications(now: Date): Promise<Notification[]> {
     ),
     ...stored
       .filter((s: PlatformNotification) => !trueKeys.has(s.key))
-      .map((s: PlatformNotification) => clearNotification(s.key)),
+      .map((s: PlatformNotification) => clearNotification(owner, s.key)),
   ]);
 
   // Render from the feed (non-dismissed). The feed is a subset of `derived` after the sync,
   // so filtering `derived` by feed membership keeps the domain's urgency order + grouping
   // while letting the platform own dismissed-state.
-  const feed: PlatformNotification[] = await listNotifications();
+  const feed: PlatformNotification[] = await listNotifications({ owner });
   const feedKeys = new Set(feed.map((n: PlatformNotification) => n.key));
   return derived.filter((n: Notification) => feedKeys.has(n.key));
 }

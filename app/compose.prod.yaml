@@ -54,7 +54,7 @@ services:
       - "traefik.http.services.forge-os.loadbalancer.healthcheck.interval=10s"
 
   data-plane:
-    image: ghcr.io/mardash-ai/forge-data-plane:0.14.0@sha256:edbef8a66eccd800fe6b7db1307a42270830709ed0218fa04422560744a579c9
+    image: ghcr.io/mardash-ai/forge-data-plane:0.15.0@sha256:58b2868fa9a53fba6c722371a323317c8adc7495078ecad9839260506871c672
     restart: unless-stopped
     environment:
       - PORT=3718

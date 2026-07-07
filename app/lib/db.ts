@@ -95,6 +95,23 @@ function ensureSchema(): Promise<void> {
         UNIQUE (habit_id, period)
       );
       CREATE INDEX IF NOT EXISTS habit_streak_breaks_habit_id_idx ON habit_streak_breaks (habit_id);
+      -- C11 · per-user ownership. Every app-domain row belongs to a C10 session user
+      -- (owner_id = getSession().userId, an opaque platform id — TEXT, not a uuid).
+      -- Children inherit their parent's owner (tasks←goals, check-ins/breaks←habits).
+      -- Every read filters WHERE owner_id = <session user>, so a row owned by another
+      -- user is simply absent (a by-id fetch of it is a 404, never a 403). Added
+      -- nullable for an additive migration; every INSERT populates it and existing rows
+      -- are backfilled at the C11 cutover.
+      ALTER TABLE goals ADD COLUMN IF NOT EXISTS owner_id text;
+      ALTER TABLE tasks ADD COLUMN IF NOT EXISTS owner_id text;
+      ALTER TABLE habits ADD COLUMN IF NOT EXISTS owner_id text;
+      ALTER TABLE habit_checkins ADD COLUMN IF NOT EXISTS owner_id text;
+      ALTER TABLE habit_streak_breaks ADD COLUMN IF NOT EXISTS owner_id text;
+      CREATE INDEX IF NOT EXISTS goals_owner_id_idx ON goals (owner_id);
+      CREATE INDEX IF NOT EXISTS tasks_owner_id_idx ON tasks (owner_id);
+      CREATE INDEX IF NOT EXISTS habits_owner_id_idx ON habits (owner_id);
+      CREATE INDEX IF NOT EXISTS habit_checkins_owner_id_idx ON habit_checkins (owner_id);
+      CREATE INDEX IF NOT EXISTS habit_streak_breaks_owner_id_idx ON habit_streak_breaks (owner_id);
     `)
     .then(() => undefined)
     .catch((err: unknown) => {
@@ -163,17 +180,18 @@ const TASK_COLS = 'id, goal_id, title, done, due_date::text AS due_date, created
 // Activity events are emitted to / read from the Forge app event log (C3) via
 // lib/forge-events.ts — see emitAppEvent below and listTimelineEvents there.
 
-/** All goals, newest first, each with derived progress. */
-export async function listGoals(): Promise<GoalWithProgress[]> {
+/** The owner's goals, newest first, each with derived progress. */
+export async function listGoals(owner: string): Promise<GoalWithProgress[]> {
   const rows = await query<GoalRow & { total: string; done: string }>(`
     SELECT g.id, g.title, g.description, g.status, g.created_at,
            COUNT(t.id) AS total,
            COUNT(t.id) FILTER (WHERE t.done) AS done
     FROM goals g
     LEFT JOIN tasks t ON t.goal_id = g.id
+    WHERE g.owner_id = $1
     GROUP BY g.id
     ORDER BY g.created_at DESC
-  `);
+  `, [owner]);
   return rows.map((r) => {
     const total = Number(r.total);
     const done = Number(r.done);
@@ -181,24 +199,28 @@ export async function listGoals(): Promise<GoalWithProgress[]> {
   });
 }
 
-export async function createGoal(title: string, description: string): Promise<GoalWithProgress> {
+export async function createGoal(owner: string, title: string, description: string): Promise<GoalWithProgress> {
   const rows = await query<GoalRow>(
-    `INSERT INTO goals (title, description) VALUES ($1, $2) RETURNING ${GOAL_COLS}`,
-    [title, description],
+    `INSERT INTO goals (owner_id, title, description) VALUES ($1, $2, $3) RETURNING ${GOAL_COLS}`,
+    [owner, title, description],
   );
   const goal = mapGoal(rows[0]);
-  await emitAppEvent({ type: 'goal.created', subject: goal.id, data: { goalTitle: goal.title } });
+  await emitAppEvent({ owner, type: 'goal.created', subject: goal.id, data: { goalTitle: goal.title } });
   return { ...goal, total: 0, done: 0, progress: 0 };
 }
 
-/** A goal with its tasks and derived progress, or null if the id is unknown. */
-export async function getGoal(id: string): Promise<GoalWithTasks | null> {
+/** One of the OWNER's goals with its tasks and derived progress, or null if the id is
+ *  unknown OR owned by another user (so a route maps it to a 404, never a 403). */
+export async function getGoal(owner: string, id: string): Promise<GoalWithTasks | null> {
   if (!isUuid(id)) return null;
-  const goalRows = await query<GoalRow>(`SELECT ${GOAL_COLS} FROM goals WHERE id = $1`, [id]);
+  const goalRows = await query<GoalRow>(
+    `SELECT ${GOAL_COLS} FROM goals WHERE id = $1 AND owner_id = $2`,
+    [id, owner],
+  );
   if (goalRows.length === 0) return null;
   const taskRows = await query<TaskRow>(
-    `SELECT ${TASK_COLS} FROM tasks WHERE goal_id = $1 ORDER BY created_at ASC`,
-    [id],
+    `SELECT ${TASK_COLS} FROM tasks WHERE goal_id = $1 AND owner_id = $2 ORDER BY created_at ASC`,
+    [id, owner],
   );
   const tasks = taskRows.map(mapTask);
   const done = tasks.reduce((n, t) => (t.done ? n + 1 : n), 0);
@@ -211,20 +233,22 @@ export async function getGoal(id: string): Promise<GoalWithTasks | null> {
   };
 }
 
-export async function updateGoalStatus(id: string, status: GoalStatus): Promise<Goal | null> {
+export async function updateGoalStatus(owner: string, id: string, status: GoalStatus): Promise<Goal | null> {
   if (!isUuid(id)) return null;
   // Capture the previous status in the same statement so we can log the transition.
+  // Scoped to the owner: another user's goal never matches, so it reads as "not found".
   const rows = await query<GoalRow & { from_status: string }>(
-    `WITH before AS (SELECT id, status AS from_status FROM goals WHERE id = $1)
+    `WITH before AS (SELECT id, status AS from_status FROM goals WHERE id = $1 AND owner_id = $3)
      UPDATE goals g SET status = $2 FROM before
      WHERE g.id = before.id
      RETURNING g.id, g.title, g.description, g.status, g.created_at, before.from_status`,
-    [id, status],
+    [id, status, owner],
   );
   if (rows.length === 0) return null;
   const goal = mapGoal(rows[0]);
   if (rows[0].from_status !== goal.status) {
     await emitAppEvent({
+      owner,
       type: 'goal.status_changed',
       subject: goal.id,
       data: { goalTitle: goal.title, from: rows[0].from_status as GoalStatus, to: goal.status },
@@ -233,20 +257,22 @@ export async function updateGoalStatus(id: string, status: GoalStatus): Promise<
   return goal;
 }
 
-/** Adds a task to a goal, or null if the goal id is unknown. */
-export async function addTask(goalId: string, title: string): Promise<Task | null> {
+/** Adds a task to one of the OWNER's goals, or null if the goal id is unknown or not theirs.
+ *  The task inherits the goal's owner. */
+export async function addTask(owner: string, goalId: string, title: string): Promise<Task | null> {
   if (!isUuid(goalId)) return null;
   const goal = await query<{ id: string; title: string }>(
-    `SELECT id, title FROM goals WHERE id = $1`,
-    [goalId],
+    `SELECT id, title FROM goals WHERE id = $1 AND owner_id = $2`,
+    [goalId, owner],
   );
   if (goal.length === 0) return null;
   const rows = await query<TaskRow>(
-    `INSERT INTO tasks (goal_id, title) VALUES ($1, $2) RETURNING ${TASK_COLS}`,
-    [goalId, title],
+    `INSERT INTO tasks (goal_id, owner_id, title) VALUES ($1, $2, $3) RETURNING ${TASK_COLS}`,
+    [goalId, owner, title],
   );
   const task = mapTask(rows[0]);
   await emitAppEvent({
+    owner,
     type: 'task.added',
     subject: goalId,
     data: { taskTitle: task.title, goalTitle: goal[0].title, taskId: task.id },
@@ -254,20 +280,22 @@ export async function addTask(goalId: string, title: string): Promise<Task | nul
   return task;
 }
 
-export async function completeTask(id: string): Promise<Task | null> {
+export async function completeTask(owner: string, id: string): Promise<Task | null> {
   if (!isUuid(id)) return null;
-  // Only log a completion when the task actually transitions to done.
+  // Only log a completion when the task actually transitions to done. Scoped to the
+  // owner: another user's task never matches, so it reads as "not found".
   const rows = await query<TaskRow & { was_done: boolean }>(
-    `WITH before AS (SELECT id, done AS was_done FROM tasks WHERE id = $1)
+    `WITH before AS (SELECT id, done AS was_done FROM tasks WHERE id = $1 AND owner_id = $2)
      UPDATE tasks t SET done = true FROM before
      WHERE t.id = before.id
      RETURNING t.id, t.goal_id, t.title, t.done, t.due_date::text AS due_date, t.created_at, before.was_done`,
-    [id],
+    [id, owner],
   );
   if (rows.length === 0) return null;
   const task = mapTask(rows[0]);
   if (!rows[0].was_done) {
     await emitAppEvent({
+      owner,
       type: 'task.completed',
       subject: task.goalId,
       data: { taskTitle: task.title, taskId: task.id },
@@ -276,12 +304,13 @@ export async function completeTask(id: string): Promise<Task | null> {
   return task;
 }
 
-/** Sets or clears (null) a task's due date, or null if the task id is unknown. */
-export async function setTaskDueDate(id: string, dueDate: string | null): Promise<Task | null> {
+/** Sets or clears (null) a task's due date, or null if the task id is unknown or not the
+ *  owner's (so a route maps it to a 404, never a 403). */
+export async function setTaskDueDate(owner: string, id: string, dueDate: string | null): Promise<Task | null> {
   if (!isUuid(id)) return null;
   const rows = await query<TaskRow>(
-    `UPDATE tasks SET due_date = $2 WHERE id = $1 RETURNING ${TASK_COLS}`,
-    [id, dueDate],
+    `UPDATE tasks SET due_date = $2 WHERE id = $1 AND owner_id = $3 RETURNING ${TASK_COLS}`,
+    [id, dueDate, owner],
   );
   return rows.length ? mapTask(rows[0]) : null;
 }
@@ -296,8 +325,8 @@ export interface DueTask {
   createdAt: string;
 }
 
-/** Incomplete tasks that have a due date, with goal title, soonest due first. */
-export async function listDueTasks(): Promise<DueTask[]> {
+/** The owner's incomplete tasks that have a due date, with goal title, soonest due first. */
+export async function listDueTasks(owner: string): Promise<DueTask[]> {
   const rows = await query<{
     id: string;
     goal_id: string;
@@ -310,8 +339,9 @@ export async function listDueTasks(): Promise<DueTask[]> {
             g.title AS goal_title
      FROM tasks t
      JOIN goals g ON g.id = t.goal_id
-     WHERE t.done = false AND t.due_date IS NOT NULL
+     WHERE t.owner_id = $1 AND t.done = false AND t.due_date IS NOT NULL
      ORDER BY t.due_date ASC`,
+    [owner],
   );
   return rows.map((r) => ({
     id: r.id,
@@ -328,12 +358,13 @@ export async function listDueTasks(): Promise<DueTask[]> {
 /** Active goals whose last activity (latest app event, else creation) is older than
  *  the cold threshold — the "gone cold" candidates. Coldest first. The latest-activity
  *  map comes from the C3 event log; the pure `coldGoals` rule filters + sorts. */
-async function listColdGoals(thresholdDays: number, now: Date): Promise<ColdInput[]> {
+async function listColdGoals(owner: string, thresholdDays: number, now: Date): Promise<ColdInput[]> {
   const [goals, latest] = await Promise.all([
     query<{ id: string; title: string; created_at: Date }>(
-      `SELECT id, title, created_at FROM goals WHERE status = 'active'`,
+      `SELECT id, title, created_at FROM goals WHERE owner_id = $1 AND status = 'active'`,
+      [owner],
     ),
-    latestActivityBySubject(),
+    latestActivityBySubject(owner),
   ]);
   return coldGoals(
     goals.map((g) => ({
@@ -353,10 +384,10 @@ async function listColdGoals(thresholdDays: number, now: Date): Promise<ColdInpu
  * platform (capability C4): `lib/notification-inbox.ts` upserts these, clears the ones no
  * longer true, and renders the non-dismissed feed. This function does NOT filter dismissed.
  */
-export async function deriveNotifications(now: Date): Promise<Notification[]> {
+export async function deriveNotifications(owner: string, now: Date): Promise<Notification[]> {
   const [due, cold] = await Promise.all([
-    listDueTasks(),
-    listColdGoals(COLD_THRESHOLD_DAYS, now),
+    listDueTasks(owner),
+    listColdGoals(owner, COLD_THRESHOLD_DAYS, now),
   ]);
   const overdue = due
     .filter((t) => bucketFor(t.dueDate, now) === 'overdue')
@@ -395,22 +426,24 @@ function mapHabit(r: HabitRow): Habit {
   };
 }
 
-export async function createHabit(title: string, cadence: Cadence): Promise<Habit> {
+export async function createHabit(owner: string, title: string, cadence: Cadence): Promise<Habit> {
   const rows = await query<HabitRow>(
-    `INSERT INTO habits (title, cadence) VALUES ($1, $2) RETURNING id, title, cadence, created_at`,
-    [title, cadence],
+    `INSERT INTO habits (owner_id, title, cadence) VALUES ($1, $2, $3) RETURNING id, title, cadence, created_at`,
+    [owner, title, cadence],
   );
   return mapHabit(rows[0]);
 }
 
-/** All habits, oldest first, each with its streak derived from check-ins as of `now`. */
-export async function listHabits(now: Date): Promise<HabitWithStreak[]> {
+/** The owner's habits, oldest first, each with its streak derived from check-ins as of `now`. */
+export async function listHabits(owner: string, now: Date): Promise<HabitWithStreak[]> {
   const habitRows = await query<HabitRow>(
-    `SELECT id, title, cadence, created_at FROM habits ORDER BY created_at ASC`,
+    `SELECT id, title, cadence, created_at FROM habits WHERE owner_id = $1 ORDER BY created_at ASC`,
+    [owner],
   );
   if (habitRows.length === 0) return [];
   const checkins = await query<{ habit_id: string; period: string }>(
-    `SELECT habit_id, period::text AS period FROM habit_checkins`,
+    `SELECT habit_id, period::text AS period FROM habit_checkins WHERE owner_id = $1`,
+    [owner],
   );
   const byHabit = new Map<string, string[]>();
   for (const c of checkins) {
@@ -425,49 +458,55 @@ export async function listHabits(now: Date): Promise<HabitWithStreak[]> {
   });
 }
 
-async function getHabitRow(id: string): Promise<Habit | null> {
+async function getHabitRow(owner: string, id: string): Promise<Habit | null> {
   if (!isUuid(id)) return null;
   const rows = await query<HabitRow>(
-    `SELECT id, title, cadence, created_at FROM habits WHERE id = $1`,
-    [id],
+    `SELECT id, title, cadence, created_at FROM habits WHERE id = $1 AND owner_id = $2`,
+    [id, owner],
   );
   return rows.length ? mapHabit(rows[0]) : null;
 }
 
-async function refreshHabit(habit: Habit, now: Date): Promise<HabitWithStreak> {
+async function refreshHabit(owner: string, habit: Habit, now: Date): Promise<HabitWithStreak> {
   const rows = await query<{ period: string }>(
-    `SELECT period::text AS period FROM habit_checkins WHERE habit_id = $1`,
-    [habit.id],
+    `SELECT period::text AS period FROM habit_checkins WHERE habit_id = $1 AND owner_id = $2`,
+    [habit.id, owner],
   );
   return { ...habit, ...computeStreak(rows.map((r) => r.period), habit.cadence, now.toISOString()) };
 }
 
-/** Check in the current period (idempotent). Returns the fresh streak, or null if the id is unknown. */
-export async function checkInHabit(id: string, now: Date): Promise<HabitWithStreak | null> {
-  const habit = await getHabitRow(id);
+/** Check in the current period for one of the OWNER's habits (idempotent). Returns the fresh
+ *  streak, or null if the id is unknown or not theirs. The check-in inherits the habit's owner. */
+export async function checkInHabit(owner: string, id: string, now: Date): Promise<HabitWithStreak | null> {
+  const habit = await getHabitRow(owner, id);
   if (!habit) return null;
   const period = periodStart(dateOf(now.toISOString()), habit.cadence);
   await query(
-    `INSERT INTO habit_checkins (habit_id, period) VALUES ($1, $2)
+    `INSERT INTO habit_checkins (habit_id, owner_id, period) VALUES ($1, $2, $3)
      ON CONFLICT (habit_id, period) DO NOTHING`,
-    [id, period],
+    [id, owner, period],
   );
-  return refreshHabit(habit, now);
+  return refreshHabit(owner, habit, now);
 }
 
-/** Undo the current period's check-in. Returns the fresh streak, or null if the id is unknown. */
-export async function uncheckHabit(id: string, now: Date): Promise<HabitWithStreak | null> {
-  const habit = await getHabitRow(id);
+/** Undo the current period's check-in. Returns the fresh streak, or null if the id is unknown
+ *  or not the owner's. */
+export async function uncheckHabit(owner: string, id: string, now: Date): Promise<HabitWithStreak | null> {
+  const habit = await getHabitRow(owner, id);
   if (!habit) return null;
   const period = periodStart(dateOf(now.toISOString()), habit.cadence);
-  await query(`DELETE FROM habit_checkins WHERE habit_id = $1 AND period = $2`, [id, period]);
-  return refreshHabit(habit, now);
+  await query(`DELETE FROM habit_checkins WHERE habit_id = $1 AND owner_id = $2 AND period = $3`, [id, owner, period]);
+  return refreshHabit(owner, habit, now);
 }
 
-/** Delete a habit (and its check-ins, via cascade). False if the id is unknown/malformed. */
-export async function deleteHabit(id: string): Promise<boolean> {
+/** Delete one of the OWNER's habits (and its check-ins, via cascade). False if the id is
+ *  unknown, malformed, or owned by another user. */
+export async function deleteHabit(owner: string, id: string): Promise<boolean> {
   if (!isUuid(id)) return false;
-  const rows = await query<{ id: string }>(`DELETE FROM habits WHERE id = $1 RETURNING id`, [id]);
+  const rows = await query<{ id: string }>(
+    `DELETE FROM habits WHERE id = $1 AND owner_id = $2 RETURNING id`,
+    [id, owner],
+  );
   return rows.length > 0;
 }
 
@@ -492,8 +531,11 @@ export interface StreakBreak {
  * the persisted history of *when* streaks broke.
  */
 export async function finalizeHabitStreaks(now: Date): Promise<StreakBreak[]> {
-  const habitRows = await query<HabitRow>(
-    `SELECT id, title, cadence, created_at FROM habits ORDER BY created_at ASC`,
+  // The C2 scheduler runs this SYSTEM-WIDE (a service token, no user session), so it
+  // settles EVERY user's habits. It reads across owners deliberately and stamps each
+  // recorded break with its own habit's owner (children inherit their parent's owner).
+  const habitRows = await query<HabitRow & { owner_id: string | null }>(
+    `SELECT id, owner_id, title, cadence, created_at FROM habits ORDER BY created_at ASC`,
   );
   if (habitRows.length === 0) return [];
   const checkins = await query<{ habit_id: string; period: string }>(
@@ -516,9 +558,9 @@ export async function finalizeHabitStreaks(now: Date): Promise<StreakBreak[]> {
     // Don't finalize periods before the habit existed.
     if (period < periodStart(dateOf(habit.createdAt), habit.cadence)) continue;
     const ins = await query<{ id: string }>(
-      `INSERT INTO habit_streak_breaks (habit_id, period, streak) VALUES ($1, $2, $3)
+      `INSERT INTO habit_streak_breaks (habit_id, owner_id, period, streak) VALUES ($1, $2, $3, $4)
        ON CONFLICT (habit_id, period) DO NOTHING RETURNING id`,
-      [row.id, period, brokenStreak],
+      [row.id, row.owner_id, period, brokenStreak],
     );
     if (ins.length > 0) {
       recorded.push({ habitId: habit.id, title: habit.title, cadence: habit.cadence, period, streak: brokenStreak });
