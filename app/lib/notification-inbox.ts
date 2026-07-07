@@ -30,22 +30,23 @@ export async function syncNotifications(now: Date): Promise<Notification[]> {
   // Snapshot the store BEFORE writing, to find conditions that no longer apply.
   const stored: PlatformNotification[] = await listNotifications({ includeDismissed: true });
 
-  // Reconcile SEQUENTIALLY — do NOT fire these concurrently. The platform store applies each
-  // upsert/clear as a read-modify-write of the whole per-app list, so concurrent mutations
-  // (even to different keys) lose updates and the feed comes back flickering/partial. One
-  // write at a time keeps the store consistent. (A future C2 job could move this off the read
+  // Reconcile CONCURRENTLY — the platform store is now atomic under concurrent writes (per-app
+  // mutex + atomic file replace, C4/P5), so all upserts + clears can fire in parallel without
+  // losing updates. The feed stays deterministic. (A future C2 job could move this off the read
   // path entirely.)
-  for (const n of derived) {
-    await upsertNotification({
-      key: n.key,
-      title: n.message,
-      subject: n.goalId,
-      data: { kind: n.kind, goalId: n.goalId, goalTitle: n.goalTitle, taskId: n.taskId },
-    });
-  }
-  for (const s of stored) {
-    if (!trueKeys.has(s.key)) await clearNotification(s.key);
-  }
+  await Promise.all([
+    ...derived.map((n: Notification) =>
+      upsertNotification({
+        key: n.key,
+        title: n.message,
+        subject: n.goalId,
+        data: { kind: n.kind, goalId: n.goalId, goalTitle: n.goalTitle, taskId: n.taskId },
+      }),
+    ),
+    ...stored
+      .filter((s: PlatformNotification) => !trueKeys.has(s.key))
+      .map((s: PlatformNotification) => clearNotification(s.key)),
+  ]);
 
   // Render from the feed (non-dismissed). The feed is a subset of `derived` after the sync,
   // so filtering `derived` by feed membership keeps the domain's urgency order + grouping

@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.1] — 2026-07-07
+
+### Fixed
+
+- **Adopt the Forge `0.10.0` maintenance release (P4/P5/P2).** Bump both images to `v0.10.0` — control
+  plane `forge-control-plane:0.10.0@sha256:9760b58b…`, data plane `forge-data-plane:0.10.0@sha256:067f6850…`
+  (both multi-arch amd64+arm64) — in `compose.yaml` (dev control-plane default), `compose.prod.yaml`
+  (the data-plane sidecar), and `.env.prod.example` (both planes). Two platform fixes land transparently
+  on the bump: **(P4)** `forge dev` now auto-resets a stale production `.next` before starting, so a
+  `forge build` → `forge dev` sequence no longer 500s with
+  `Cannot find module './chunks/vendor-chunks/next.js'` (verified: build → dev with no manual `.next`
+  cleanup serves `200`); and **(P2)** a new `forge secrets unset --name <NAME>` (idempotent; never
+  returns the value) is now available — additive, no app change.
+- **Drop the C4 notification-store serialization workaround now that the store is atomic (P5).** The
+  platform notifications store is now atomic under concurrent writes (per-app mutex + atomic file
+  replace), so `syncNotifications` (`lib/notification-inbox.ts`) fires the reconcile's upserts + clears
+  **concurrently** again via `Promise.all`, reverting the one-write-at-a-time loop added as a
+  lost-update guard. `GET /api/notifications` is now deterministic under load (30 fully-concurrent reads
+  return one identical body; no flicker). Behavior is otherwise identical; the explicit
+  `Notification`/`PlatformNotification` annotations are retained.
+
 ## [0.2.0] — 2026-07-07
 
 ### Added
@@ -125,6 +146,7 @@ _This changelog started mid-project: the Goals & Tasks core and the Timeline →
 Reminders → Planner Agent → Habits features predate it; see `PROJECT_IDEA.md`'s roadmap and the git
 history for that record._
 
-[Unreleased]: https://github.com/mardash-ai/forge-os/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/mardash-ai/forge-os/compare/v0.2.1...HEAD
+[0.2.1]: https://github.com/mardash-ai/forge-os/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/mardash-ai/forge-os/compare/v0.1.1...v0.2.0
 [0.1.1]: https://github.com/mardash-ai/forge-os/commit/c9c545411f2401b5c849cd0f6682604d1b7ad712
