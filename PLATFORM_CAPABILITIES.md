@@ -14,7 +14,7 @@ routed to Forge**, instead of being quietly absorbed as app-local code.
 > **forge-os agent** (builds features here and simplifies `./app` onto new capabilities). They
 > never talk directly — a **human relays** between them. Read *How this file works* before editing.
 
-> **✍️ Write baton — `Holder: platform-builder`.** Only the named Holder may edit this file; the other
+> **✍️ Write baton — `Holder: forge-os`.** Only the named Holder may edit this file; the other
 > agent waits for the human to pass the baton. This is the single-writer lock over the human relay
 > (the two agents live in separate repos, so this token — not git — is what serializes writes).
 > Rules:
@@ -265,7 +265,7 @@ row's pin is safe because every delivery has been additive.
 | C1 | _TODO (platform-builder)_ | _TODO_ | _TODO (forge-os)_ | _TODO_ |
 | C2 | `0.4.0 @ sha256:9d216618…1a47` **multi-arch** (v0.4.0 / `42e5360`) | image bump + register jobs + add cron endpoint(s) | `95ba999` | `0.4.0 @ sha256:9d216618…1a47` |
 | C3 | `0.7.0 @ sha256:b4933e46…` (CP) **+** data-plane `@ sha256:107ecff5…` **multi-arch** (v0.7.0 / `cd7f509`) | both image bumps + `FORGE_EVENTS_URL` on `web` + a `lib/forge-events.ts` client | `15c096d` | CP `0.7.0 @ sha256:b4933e46…` + dp `@ sha256:107ecff5…` |
-| C4 | _TODO_ | _TODO_ | _TODO_ | _TODO_ |
+| C4 | `0.8.0 @ sha256:95a2aead…` (CP) **+** data-plane `@ sha256:7de5566e…` **multi-arch** (v0.8.0 / `dfbfe65`) | both image bumps; **no new env** (reuse C3's `FORGE_EVENTS_URL`) + notification client calls | _TODO (forge-os)_ | _TODO_ |
 | C5 | `0.2.0 @ sha256:924814d3…eb762` **multi-arch** (v0.2.0 / `5765c4a`) | image bump + re-provision (declare `--secret`) | `d2faf4d` | `0.3.0 @ sha256:8d0dea66…df05` (bumped via **P1**; ≥ 0.2.0, secrets unaffected) |
 | C6 | _TODO_ | _TODO_ | _TODO_ | _TODO_ |
 | C7 | `0.6.1 @ sha256:482bda5c…c61e` **multi-arch** (v0.6.1 / `0115e04`) | `forge deploy` replaces the app's rollout script; `make deploy` starts the control plane transiently | `d367099` | `0.6.1 @ sha256:482bda5c…c61e` |
@@ -550,7 +550,7 @@ spec for the platform-builder; *Refactors OUT* is the forge-os plan; the *Platfo
   - **Adopted in** — see the *Runtime & version* table (C3) and the Handoff log.
 
 ### C4 · Notifications — *(bundle with C2 + C3)*
-**Status:** 🟡 Local stopgap · **Owner:** platform-builder · **Plane:** data-plane (notifications produced/delivered at runtime, incl. while the user is away)
+**Status:** 🟢 Ready for adoption · **Owner:** forge-os · **Plane:** data-plane (notifications produced/tracked at runtime, incl. while the user is away)
 
 - **Needed by:** Reminders (v2). **Depends on:** C3 (event source) + C2 (to push).
 - **Reference implementation:** derivation + the `dismissed_notifications` table in
@@ -566,7 +566,45 @@ spec for the platform-builder; *Refactors OUT* is the forge-os plan; the *Platfo
 - **Refactors OUT once adopted:** delete `dismissed_notifications` + the derive/dismiss logic; routes
   become thin clients over `forge.notifications`. **Stays (domain):** the inbox UI, the copy, and
   *which* conditions matter (expressed as subscriptions).
-- **Platform delivery:** _TODO (platform-builder)_
+- **Platform delivery:**
+  - **Delivered in** — control-plane image
+    `ghcr.io/mardash-ai/forge-control-plane:0.8.0 @ sha256:95a2aead4549b59a1e36dbf1c24261f70eee3df698ab86f08a9e762786026354`
+    **+** data-plane image
+    `ghcr.io/mardash-ai/forge-data-plane @ sha256:7de5566e9292347fb2afda9a0fe1d67b554e491e9eb33f795f51edd68677a037`
+    — both **multi-arch (`linux/amd64` + `linux/arm64`)**, platform `v0.8.0` / commit `dfbfe65`. Bump
+    **both** `FORGE_IMAGE` and `FORGE_DATA_PLANE_IMAGE`. App base image unchanged.
+  - **Plane** (R3) — **data-plane**: the running app upserts/reads notifications at runtime (prod: the
+    sidecar); the control plane serves the same routes for `forge dev`, and `inspect notifications` is
+    the observability surface. Same app→Forge direction as C3.
+  - **Consume it** — HTTP, **app→Forge**, over the base URL the app **already wired for C3**
+    (`FORGE_EVENTS_URL` — prod `http://data-plane:3718`, dev `http://host.docker.internal:3717`). **No
+    new env.** Extend the app client (`lib/forge-events.ts`, or a sibling `lib/forge-notifications.ts`):
+    - *upsert* (idempotent, by stable `key`): `POST ${base}/notifications { key, title, body?, data?,
+      subject? }` → `{ notification }`. Re-deriving the same condition updates in place and **preserves
+      `dismissed` + `created_at`** — a still-true dismissed notification never resurfaces.
+    - *dismiss* (persists): `POST ${base}/notifications/dismiss { key }` → `{ dismissed }`.
+    - *clear* (condition no longer applies): `POST ${base}/notifications/clear { key }` → `{ cleared }`.
+    - *feed*: `GET ${base}/notifications?include_dismissed=` → `{ notifications: Notification[] }` newest-first.
+    - **types:** `Notification { key; title; body?; data; subject?; dismissed; created_at; updated_at }`.
+      `key`/`title` required; `key` is the app's stable condition id (e.g. `cold:<goalId>`).
+    - **failure modes:** missing `key` or `title` → `422`; unknown app → `404`. Reads of an app with no
+      notifications → `[]` (never throws). Emit/upsert should be best-effort in the client (swallow).
+  - **Wire it in** — (1) bump `FORGE_IMAGE` + `FORGE_DATA_PLANE_IMAGE` → the pins above; (2) **no new
+    env** (reuse `FORGE_EVENTS_URL`); (3) on each derive (read-time now, a C2 job later), **upsert** the
+    current notifications + **clear** the ones no longer applicable; **dismiss** on the inbox action;
+    render from the **feed**. Delete the `dismissed_notifications` table + the derive/dismiss/persist DB
+    code — keep the inbox UI + copy + which conditions matter.
+  - **Detect absence / degrade** — if the sidecar is unreachable (or an older image → `404`), the client
+    swallows and the feed is `[]`; the app stays up (empty inbox, no crash) — the same contract C3 uses.
+  - **Verify** — `POST $FORGE_EVENTS_URL/notifications {"key":"cold:g1","title":"Goal g1 is cold"}` →
+    `{notification}`; a second identical POST doesn't duplicate; `/dismiss` removes it from
+    `GET /notifications` but not `?include_dismissed=1`; `/clear` removes it entirely;
+    `forge inspect notifications --app <app>`. (All proven live against the data-plane server.)
+  - **Data & migration** — the app's `dismissed_notifications` rows aren't auto-migrated; **clean
+    cutover** (re-dismissals happen naturally) or replay dismissed keys into `POST /notifications/dismiss`.
+  - **Compatibility / breaking** — additive; no adopted capability affected. Needs **both** `0.8.0` image
+    bumps. **Depends on C2 + C3 (both ✅).** The "produce while away" half is the app registering a **C2**
+    job that upserts on cadence — the store is ready for it; external-channel push (email etc.) is future.
 - **Adoption:** _TODO (forge-os)_
 
 ### C5 · Secrets / credential management — *(quick win — already bit us)*
@@ -995,6 +1033,7 @@ Append one line per state change (newest last). `by` = role; `ref` = commit / PR
 | P3 | → ✅ adopted | forge-os | `202ee28` | bumped the dev control plane `0.4.0 → 0.6.1@482bda5c…` (max over adopted C2/C5/C7; folds in the 0.5.1 P3 fix; arm64 confirmed first) — dev now unified with the `make deploy` transient plane on one pin. Flag-less `provision` converged (P1): only change was `pg_isready -U forge` → `-U forge -d forge_os`; a fresh postgres logged **0** `FATAL: database "forge"`. Re-validated build/test(80/0)/lint on 0.6.1; the `habits-finalize` cron survived the restart. Baton acquired for this one write, released → **`free`**. Next open work: **C3 Event log** (platform-builder builds it in the forge repo). |
 | — | filed **P4** | forge-os | `5694806` | `forge build` then `forge dev` corrupts the shared `app/.next` → dev serves 500s (`Cannot find module './chunks/vendor-chunks/next.js'`) until `.next` is cleared. Control-plane dev-tooling footgun on the natural verify sequence; hit during C2/C3. Owner → platform-builder. (Section committed with the C8 filing.) |
 | C3 | → ✅ adopted | forge-os | `15c096d` | Timeline now reads the app's OWN events from the Forge event log (first **app→Forge** integration). Bumped CP→`0.7.0` + pinned the first **data-plane image** (`107ecff5…`) in prod compose/.env; added `lib/forge-events.ts` (emit/feed/latest, best-effort, 2s timeout) + `FORGE_EVENTS_URL`/`FORGE_APP_NAME`; **deleted** the `events` table + `recordEvent`/`listEvents`/`mapEvent`; cold-goal now uses `GET /app-events/latest` + pure `coldGoals()`. `lib/db.ts` **656→593** (first shrink!). Verified: build/test **85/0**/lint; live emit→`/api/events`→`inspect app-events`→`latest`; degrade (server down → `[]`, goal create still 201). Baton → **platform-builder** (per sequence next is **C1**; **C4** now unblocked — C2+C3 both adopted; C8/P2/P4 also pending). |
+| C4 | → 🟢 ready | platform-builder | `0.8.0@sha256:95a2aead…` + dp `@sha256:7de5566e…` | Notifications delivered (**data-plane**, R3): durable per-app notification store — app upserts by stable `key` (idempotent; preserves `dismissed`+`created_at`), `dismiss`/`clear`/`feed`, via `POST`/`GET /notifications` on both servers. **Reuses C3's `FORGE_EVENTS_URL` — no new env.** A C2 job can upsert while the user is away. 64/64 tests + verified live (upsert→idempotent→dismiss→clear→422). Built on `feat/c4-notifications` under **R2** while C3 was adopting; merged + delivered now that C3 is ✅. Baton → **forge-os** to adopt: delete `dismissed_notifications` + the derive/dismiss DB code, add notification client calls; keep the inbox UI + which conditions matter. |
 
 ---
 
