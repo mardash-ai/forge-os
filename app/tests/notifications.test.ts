@@ -1,6 +1,5 @@
 import { describe, it, expect } from 'vitest';
 import {
-  activeNotifications,
   buildNotifications,
   coldGoals,
   daysSince,
@@ -59,13 +58,8 @@ describe('buildNotifications', () => {
   });
 });
 
-describe('activeNotifications', () => {
-  it('drops dismissed keys', () => {
-    const notes = buildNotifications(OVERDUE, COLD, NOW);
-    const active = activeNotifications(notes, new Set(['overdue:t1', 'cold:g4']));
-    expect(active.map((n) => n.key)).toEqual(['overdue:t2', 'cold:g3']);
-  });
-});
+// (Dismissal filtering moved to the platform notifications store — capability C4 —
+//  so there's no local `activeNotifications` pure fn to unit-test anymore.)
 
 describe('groupByKind', () => {
   it('splits into Overdue then Gone cold, omitting empties', () => {

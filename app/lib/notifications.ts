@@ -102,10 +102,8 @@ export function buildNotifications(overdue: OverdueInput[], cold: ColdInput[], n
   return [...overdueNotes, ...coldNotes];
 }
 
-/** Drop any notification the user has dismissed. */
-export function activeNotifications(all: Notification[], dismissed: ReadonlySet<string>): Notification[] {
-  return all.filter((n) => !dismissed.has(n.key));
-}
+// (Dismissal is no longer a pure filter here — the platform notifications store owns it,
+//  capability C4. See lib/forge-notifications.ts + lib/notification-inbox.ts.)
 
 export interface NotificationGroup {
   kind: NotificationKind;

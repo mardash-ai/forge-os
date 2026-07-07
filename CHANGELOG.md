@@ -13,6 +13,17 @@ new backwards-compatible features, **PATCH** for backwards-compatible fixes.
 
 ### Added
 
+- **Adopted the Forge notifications store (capability C4).** The inbox is no longer derived-and-filtered
+  against a local `dismissed_notifications` table — the app now derives *which* conditions matter
+  (overdue task, cold goal) + their copy, then upserts the true ones / clears the stale ones / dismisses
+  on the inbox action against the platform via a new `lib/forge-notifications.ts` client, and renders
+  from the platform feed (`lib/notification-inbox.ts` reconciles + reads). Upsert is idempotent by `key`
+  and preserves `dismissed` + `created_at`, so a still-true, already-dismissed alert never resurfaces.
+  Bumped the control plane to `forge-control-plane:0.8.0@sha256:95a2aead…` and the data-plane to
+  `forge-data-plane@sha256:7de5566e…` (both multi-arch amd64+arm64). Unavailable-tolerant like C3: if the
+  store can't be reached the inbox reads `[]` and mutations still succeed — no crash. Removed the
+  `dismissed_notifications` table and its DB code; the `/api/notifications*` routes are now thin clients
+  over the platform (`lib/db.ts` 593→584 lines).
 - **Adopted the Forge application event log (capability C3).** The Timeline and cold-goal detection
   now read the app's own domain events from Forge instead of a local `events` table — the app's first
   outbound integration with the platform. Each mutation emits (best-effort, never blocking) via a new

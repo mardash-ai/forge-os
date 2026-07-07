@@ -10,7 +10,6 @@ import { bucketFor } from './schedule';
 import { computeStreak, dateOf, finalizeStreak, periodStart, type Cadence, type StreakInfo } from './habits';
 import {
   COLD_THRESHOLD_DAYS,
-  activeNotifications,
   buildNotifications,
   coldGoals,
   type ColdInput,
@@ -60,11 +59,9 @@ function ensureSchema(): Promise<void> {
       CREATE INDEX IF NOT EXISTS tasks_due_date_idx ON tasks (due_date);
       -- (Activity events moved to the Forge app event log — capability C3. The app
       -- emits/reads them via lib/forge-events.ts; there is no local events table.)
-      -- Only dismissals are stored; notifications themselves are derived live.
-      CREATE TABLE IF NOT EXISTS dismissed_notifications (
-        key text PRIMARY KEY,
-        dismissed_at timestamptz NOT NULL DEFAULT now()
-      );
+      -- (Notifications moved to the Forge notifications store — capability C4. The app
+      -- derives WHICH conditions matter and upserts/clears/dismisses them via
+      -- lib/forge-notifications.ts; there is no local dismissed_notifications table.)
       -- Agent runs: the first Agent Task resource. Each row records one
       -- capability invocation (kind) and the Artifact it produced (result).
       CREATE TABLE IF NOT EXISTS agent_runs (
@@ -326,7 +323,7 @@ export async function listDueTasks(): Promise<DueTask[]> {
   }));
 }
 
-// ---- notifications (derived; only dismissals are persisted) ----
+// ---- notifications (derived; the platform store owns dismiss/clear — capability C4) ----
 
 /** Active goals whose last activity (latest app event, else creation) is older than
  *  the cold threshold — the "gone cold" candidates. Coldest first. The latest-activity
@@ -350,27 +347,21 @@ async function listColdGoals(thresholdDays: number, now: Date): Promise<ColdInpu
   );
 }
 
-async function listDismissedKeys(): Promise<Set<string>> {
-  const rows = await query<{ key: string }>(`SELECT key FROM dismissed_notifications`);
-  return new Set(rows.map((r) => r.key));
-}
-
-/** Record a dismissal. Idempotent, and tolerant of any key string. */
-export async function dismissNotification(key: string): Promise<void> {
-  await query(`INSERT INTO dismissed_notifications (key) VALUES ($1) ON CONFLICT (key) DO NOTHING`, [key]);
-}
-
-/** The live, non-dismissed notifications, most-urgent first. */
-export async function listActiveNotifications(now: Date): Promise<Notification[]> {
-  const [due, cold, dismissed] = await Promise.all([
+/**
+ * The currently-true notifications (overdue tasks + cold goals), most-urgent first — the
+ * app's domain judgment of what deserves attention. Dismissal + storage now live in the
+ * platform (capability C4): `lib/notification-inbox.ts` upserts these, clears the ones no
+ * longer true, and renders the non-dismissed feed. This function does NOT filter dismissed.
+ */
+export async function deriveNotifications(now: Date): Promise<Notification[]> {
+  const [due, cold] = await Promise.all([
     listDueTasks(),
     listColdGoals(COLD_THRESHOLD_DAYS, now),
-    listDismissedKeys(),
   ]);
   const overdue = due
     .filter((t) => bucketFor(t.dueDate, now) === 'overdue')
     .map((t) => ({ id: t.id, goalId: t.goalId, goalTitle: t.goalTitle, title: t.title, dueDate: t.dueDate }));
-  return activeNotifications(buildNotifications(overdue, cold, now), dismissed);
+  return buildNotifications(overdue, cold, now);
 }
 
 // ---- agent runs (the Agent Task / Artifact record) ----

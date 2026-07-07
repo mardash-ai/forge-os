@@ -1,13 +1,13 @@
 import Link from 'next/link';
-import { listActiveNotifications } from '@/lib/db';
+import { syncNotifications } from '@/lib/notification-inbox';
 
 type Page = 'floor' | 'today' | 'habits' | 'log' | 'alerts';
 
 // Primary nav across the Forge Floor (/), Today (/today), Habits (/habits), the
-// Log (/timeline), and Alerts (/notifications). Async: it fetches the live alert
-// count for the badge.
+// Log (/timeline), and Alerts (/notifications). Async: it reconciles the platform
+// notifications store (C4) and shows the live non-dismissed count in the badge.
 export async function SiteNav({ current }: { current: Page }) {
-  const count = (await listActiveNotifications(new Date())).length;
+  const count = (await syncNotifications(new Date())).length;
   return (
     <nav className="site-nav" aria-label="Primary">
       <Link href="/" className={current === 'floor' ? 'on' : ''} aria-current={current === 'floor' ? 'page' : undefined}>

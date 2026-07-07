@@ -1,8 +1,8 @@
 import { NextResponse } from 'next/server';
-import { listActiveNotifications } from '@/lib/db';
+import { syncNotifications } from '@/lib/notification-inbox';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET() {
-  return NextResponse.json(await listActiveNotifications(new Date()));
+  return NextResponse.json(await syncNotifications(new Date()));
 }

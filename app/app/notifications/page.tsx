@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { listActiveNotifications } from '@/lib/db';
+import { syncNotifications } from '@/lib/notification-inbox';
 import { groupByKind } from '@/lib/notifications';
 import { SiteNav } from '@/app/components/SiteNav';
 import { DismissButton } from '@/app/components/DismissButton';
@@ -7,7 +7,7 @@ import { DismissButton } from '@/app/components/DismissButton';
 export const dynamic = 'force-dynamic';
 
 export default async function NotificationsPage() {
-  const notes = await listActiveNotifications(new Date());
+  const notes = await syncNotifications(new Date());
   const groups = groupByKind(notes);
 
   return (
