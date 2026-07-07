@@ -1,7 +1,9 @@
 // Pure logic for the Planner agent — no I/O, so it is unit-testable in Node.
-// The impure Anthropic call lives in lib/agent.ts; persistence in lib/db.ts.
-// Everything the model returns is treated as UNTRUSTED and cleaned here before
-// it can reach the database or the UI.
+// The model call now runs on the platform's agent runtime (capability C1): the
+// /api/goals/[id]/plan route hands this system prompt + input + schema to
+// lib/forge-agent.ts, which POSTs /capabilities/agent-run. Everything the model
+// returns is still treated as UNTRUSTED and cleaned here (cleanProposedTasks)
+// before it can reach the UI.
 
 export const PLANNER_MODEL = 'claude-opus-4-8';
 

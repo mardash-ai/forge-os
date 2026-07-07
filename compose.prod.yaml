@@ -64,7 +64,7 @@ services:
   # Forge DATA-PLANE sidecar — runs the scheduler (C2) + secrets store (C5) and calls
   # back into `web` over `internal`. Slim image, no dev deps. Not exposed to Traefik.
   data-plane:
-    image: ${FORGE_DATA_PLANE_IMAGE:-ghcr.io/mardash-ai/forge-data-plane@sha256:7de5566e9292347fb2afda9a0fe1d67b554e491e9eb33f795f51edd68677a037}
+    image: ${FORGE_DATA_PLANE_IMAGE:-ghcr.io/mardash-ai/forge-data-plane:0.9.0@sha256:65dce68193309c601c27fe41310666c3ed178edba93783db97f00f91a7f8a457}
     pull_policy: missing
     restart: unless-stopped
     environment:

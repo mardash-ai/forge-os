@@ -69,7 +69,7 @@ multi-arch (`amd64` + `arm64`).
    ```bash
    APP_IMAGE=ghcr.io/mardash-ai/forge-os-app@sha256:<digest>            # R1: pin, don't track :latest
    FORGE_DATA_PLANE_IMAGE=ghcr.io/mardash-ai/forge-data-plane@sha256:<digest>
-   FORGE_IMAGE=ghcr.io/mardash-ai/forge-control-plane:0.6.1@sha256:<digest>  # `make deploy` starts it to run `forge deploy`
+   FORGE_IMAGE=ghcr.io/mardash-ai/forge-control-plane:0.9.0@sha256:<digest>  # `make deploy` starts it to run `forge deploy`
    POSTGRES_PASSWORD=<a real password>
    ANTHROPIC_API_KEY=<your key, or empty>
    FORGE_SECRETS_KEY=<a strong, STABLE value — see notes>

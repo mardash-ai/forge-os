@@ -7,6 +7,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] — 2026-07-07
+
+### Added
+
+- **Adopt the Forge agent runtime (C1).** The Planner no longer calls a local model SDK — the app
+  hands the platform its DOMAIN (the Planner's system prompt, the goal input, and the tasks JSON
+  Schema) and gets back a parsed, schema-valid result. `POST /api/goals/[id]/plan` is now a thin
+  call over a new `lib/forge-agent.ts` client to the platform's `POST /capabilities/agent-run`
+  (over the same C3/C4 data-plane base URL `FORGE_EVENTS_URL`); the returned `resource.artifact` is
+  post-validated with the app's own `cleanProposedTasks` policy — model output stays untrusted —
+  before it reaches the `PlanTasks` review UI. The platform runs the model, enforces the structured
+  output, and stores the run + Artifact (`forge inspect agent-runs`; facts `AgentRunSucceeded` /
+  `ArtifactCreated`), so the model key stays in Forge's vault (the reused C5 secret
+  `ANTHROPIC_API_KEY`) and never reaches the app. Bump both images to `v0.9.0` — control plane
+  `forge-control-plane:0.9.0@sha256:ac96af30…`, data plane `forge-data-plane:0.9.0@sha256:65dce681…`
+  (both multi-arch amd64+arm64). Graceful degradation is unchanged in behavior but now driven by the
+  capability's `503 dependency_unavailable` (unconfigured key) rather than a local env check: the
+  endpoint still `503`s and the app stays up, with no run persisted.
+
+### Removed
+
+- **Drop the local Planner model stack now that C1 owns it.** Delete the `agent_runs` table and
+  `recordAgentRun()` (`lib/db.ts` 584→519 lines), delete `lib/agent.ts` (the direct Anthropic call
+  and `isPlannerConfigured()`), and drop the `@anthropic-ai/sdk` dependency from `app/package.json`.
+  Clean cutover — the old `agent_runs` history is abandoned; the platform is the run system of record
+  now. Keep the domain: the Planner's prompt, the `cleanProposedTasks` post-validation, and the
+  `PlanTasks` review UI.
+
 ## [0.1.1] — 2026-07-06
 
 ### Added
@@ -97,5 +125,6 @@ _This changelog started mid-project: the Goals & Tasks core and the Timeline →
 Reminders → Planner Agent → Habits features predate it; see `PROJECT_IDEA.md`'s roadmap and the git
 history for that record._
 
-[Unreleased]: https://github.com/mardash-ai/forge-os/compare/v0.1.1...HEAD
+[Unreleased]: https://github.com/mardash-ai/forge-os/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/mardash-ai/forge-os/compare/v0.1.1...v0.2.0
 [0.1.1]: https://github.com/mardash-ai/forge-os/commit/c9c545411f2401b5c849cd0f6682604d1b7ad712
