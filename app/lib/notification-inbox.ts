@@ -13,33 +13,44 @@
 // feed reads `[]`, so the inbox is empty and nothing throws — same contract as C3.
 
 import { deriveNotifications } from './db';
-import { clearNotification, listNotifications, upsertNotification } from './forge-notifications';
+import {
+  clearNotification,
+  listNotifications,
+  upsertNotification,
+  type PlatformNotification,
+} from './forge-notifications';
 import type { Notification } from './notifications';
 
 /** Reconcile the platform store with the currently-true conditions and return the live,
  *  non-dismissed inbox, most-urgent first. */
 export async function syncNotifications(now: Date): Promise<Notification[]> {
-  const derived = await deriveNotifications(now);
-  const trueKeys = new Set(derived.map((n) => n.key));
+  const derived: Notification[] = await deriveNotifications(now);
+  const trueKeys = new Set(derived.map((n: Notification) => n.key));
 
-  // What the platform currently holds — so we can clear conditions that no longer apply.
-  const stored = await listNotifications({ includeDismissed: true });
+  // Snapshot the store BEFORE writing, to find conditions that no longer apply.
+  const stored: PlatformNotification[] = await listNotifications({ includeDismissed: true });
 
-  await Promise.all([
-    ...derived.map((n) =>
-      upsertNotification({
-        key: n.key,
-        title: n.message,
-        subject: n.goalId,
-        data: { kind: n.kind, goalId: n.goalId, goalTitle: n.goalTitle, taskId: n.taskId },
-      }),
-    ),
-    ...stored.filter((s) => !trueKeys.has(s.key)).map((s) => clearNotification(s.key)),
-  ]);
+  // Reconcile SEQUENTIALLY — do NOT fire these concurrently. The platform store applies each
+  // upsert/clear as a read-modify-write of the whole per-app list, so concurrent mutations
+  // (even to different keys) lose updates and the feed comes back flickering/partial. One
+  // write at a time keeps the store consistent. (A future C2 job could move this off the read
+  // path entirely.)
+  for (const n of derived) {
+    await upsertNotification({
+      key: n.key,
+      title: n.message,
+      subject: n.goalId,
+      data: { kind: n.kind, goalId: n.goalId, goalTitle: n.goalTitle, taskId: n.taskId },
+    });
+  }
+  for (const s of stored) {
+    if (!trueKeys.has(s.key)) await clearNotification(s.key);
+  }
 
   // Render from the feed (non-dismissed). The feed is a subset of `derived` after the sync,
   // so filtering `derived` by feed membership keeps the domain's urgency order + grouping
   // while letting the platform own dismissed-state.
-  const feedKeys = new Set((await listNotifications()).map((n) => n.key));
-  return derived.filter((n) => feedKeys.has(n.key));
+  const feed: PlatformNotification[] = await listNotifications();
+  const feedKeys = new Set(feed.map((n: PlatformNotification) => n.key));
+  return derived.filter((n: Notification) => feedKeys.has(n.key));
 }
