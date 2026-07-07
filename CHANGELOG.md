@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.0] — 2026-07-07
+
+### Added
+
+- **Add step 0 (Feature Brief → Gate 0) to the `add-a-feature` skill — platform-vs-app is decided at
+  feature inception now.** Before any app code, the workflow emits a lightweight **Feature Brief**
+  (four fields: `feature/behavior`, `persisted state`, `generic machinery touched`,
+  `self-read platform-vs-domain`) and hands it to the **orchestrator**, which rules each moving part
+  **app-local** (build in `./app`) vs. **platform** (it files a `Cn`, and may direct forge-os to
+  **WAIT** and adopt via the normal relay rather than build a stopgap). The brief fires for every
+  feature — most rulings are a fast "app-local, proceed" — and forge-os waits for the ruling before
+  writing app code. This moves platform pressure from a late, post-hoc refactor to an up-front gate.
+
+### Changed
+
+- **Reframe `add-a-feature` step 6 ("what generic machinery did I just build?") as the backstop, not
+  the primary check.** Gate 0 (step 0) is now the primary platform-vs-app decision; step 6 remains as
+  the safety net that catches only pressure Gate 0 misjudged (machinery that revealed itself as
+  generic after it was built). The loop diagram and intro are updated to lead with the brief.
+
 ## [0.4.0] — 2026-07-07
 
 ### Changed
@@ -248,7 +268,8 @@ _This changelog started mid-project: the Goals & Tasks core and the Timeline →
 Reminders → Planner Agent → Habits features predate it; see `PROJECT_IDEA.md`'s roadmap and the git
 history for that record._
 
-[Unreleased]: https://github.com/mardash-ai/forge-os/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/mardash-ai/forge-os/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/mardash-ai/forge-os/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/mardash-ai/forge-os/compare/v0.3.1...v0.4.0
 [0.3.1]: https://github.com/mardash-ai/forge-os/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/mardash-ai/forge-os/compare/v0.2.1...v0.3.0

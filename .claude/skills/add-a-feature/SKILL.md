@@ -6,11 +6,12 @@ description: Add or evolve a feature in this repo's single app (at ./app) using 
 # Add a Feature (spec-driven, design-first)
 
 The way to build on Forge is **describe the outcome, not the implementation**, then let
-the validation loop drive it to correct. You write a small *spec*; you turn it into code
-that follows the conventions below; you validate it through `./forge` (in Docker) until
-it's green; and you **verify the behavior end-to-end** before calling it done. You never
-hand-run `npm`/`next`/`node`, and you don't read app source to check state — inspect via
-`./forge`.
+the validation loop drive it to correct. First you hand the orchestrator a short **Feature
+Brief** so platform-vs-app is settled *before* you build (step 0); then you write a small
+*spec*; you turn it into code that follows the conventions below; you validate it through
+`./forge` (in Docker) until it's green; and you **verify the behavior end-to-end** before
+calling it done. You never hand-run `npm`/`next`/`node`, and you don't read app source to
+check state — inspect via `./forge`.
 
 This skill owns the **authoring workflow**. It leans on two others:
 - **`provision-app`** — the Forge mechanics (init / provision / install / build / test / lint /
@@ -23,12 +24,13 @@ This skill owns the **authoring workflow**. It leans on two others:
 ## The loop
 
 ```
+0. Brief       → Feature Brief → orchestrator (Gate 0: platform-vs-app); WAIT for the ruling  ← before any app code
 1. Spec        → specs/<feature-slug>/FEATURE.md   (Goal + acceptance criteria)
 2. Design (UI) → specs/<feature-slug>/DESIGN.md    (via the frontend-design skill; optional mockup)
-3. Build       → write files under ./app following the conventions below
+3. Build       → write files under ./app following the conventions below (only the app-local scope Gate 0 approved)
 4. Validate    → ./forge lint / build / test   (Docker), self-heal via ./forge explain
 5. Verify      → drive the real flow: dev server + exercise it (API calls, restart, screenshots)
-6. Record      → update PLATFORM_CAPABILITIES.md with the platform pressure this feature created
+6. Record      → update PLATFORM_CAPABILITIES.md with any platform pressure Gate 0 missed  (backstop)
 7. Done        → lint/build/test green AND every acceptance criterion observably holds
 ```
 
@@ -36,6 +38,43 @@ A good spec is small but **unambiguous about "done"** — the acceptance criteri
 definition of done, and they're what make first-try-correct possible.
 
 ---
+
+## 0. Feature Brief → Gate 0 (decide platform-vs-app *before* you build)
+
+**Before you write any app code**, emit a short **Feature Brief** and hand it to the
+**orchestrator**, who rules **platform-vs-app** for each moving part. This fires for *every*
+feature — most rulings are a quick "app-local, proceed" — so keep the brief lightweight: a few
+lines, not a document. The point is to catch platform pressure *up front*, at inception, instead
+of building it into `./app` and paying it down with a refactor later (that late catch is step 6,
+now only the **backstop**).
+
+Write the brief as four short fields:
+
+```markdown
+# Feature Brief: <short name>
+
+- **Feature / behavior:** <what a user can do — the user-facing outcome, 1–2 lines.>
+- **Persisted state:** <tables / files / migrations it would add, or "none / in-memory".>
+- **Generic machinery touched:** <any cross-cutting concern it would lean on — model access,
+  scheduler / background jobs, event log, secrets, notifications, deploy, health/telemetry — i.e.
+  anything that ISN'T pure Goals/Tasks/Habits domain logic. "none" is a valid answer.>
+- **My read (platform vs. domain):** <forge-os's own call: which pieces look **platform-shaped**
+  (candidate capabilities `Cn`) vs. pure app domain, and why.>
+```
+
+You may drop the brief at `specs/<feature-slug>/BRIEF.md`, but its real job is to be **handed up**.
+
+Then **hand the brief to the orchestrator and WAIT for its ruling — do not write app code yet.**
+The orchestrator rules each candidate piece:
+
+- **app-local** → build it in `./app` now (the common case);
+- **platform** → the orchestrator files a `Cn`. It may **direct you to WAIT** for that piece: in
+  that case **do not build a stopgap** for it — the capability is built in Forge first and you
+  adopt it later via the normal relay (the adoption trigger noted in step 6). Build only the parts
+  ruled **app-local**.
+
+**Honor the ruling**, then proceed to step 1 for the app-local scope. If nothing looks
+platform-shaped, say so in the brief — the ruling will be a fast "all app-local, proceed."
 
 ## 1. Write the spec
 
@@ -174,11 +213,18 @@ curl --retry 20 --retry-all-errors -sf http://localhost:3000/api/health   # wait
   *internally* (`postgres:5432`), so remap only the **host** port in `app/compose.yaml`
   (e.g. `5433:5432`) — don't stop the other project's database.
 
-## 6. Record the platform pressure
+## 6. Record the platform pressure (backstop)
+
+> **This is the backstop, not the primary check.** Platform pressure is now decided **up front at
+> Gate 0** (step 0); this step is the safety net that catches only what Gate 0 misjudged —
+> machinery that revealed itself as generic *after* it was built. If Gate 0 already routed every
+> platform-shaped piece, expect this step to be a no-op; the point is to not silently ship pressure
+> that slipped through.
 
 forge-os is the **wind tunnel for Forge** (see `CLAUDE.md`), so a feature isn't done until the
 pressure it put on the platform is captured in **`PLATFORM_CAPABILITIES.md`** — the contract with
-the platform-builder agent. Ask *what generic machinery did I just build inside `./app`?* Then —
+the platform-builder agent. Ask *what generic machinery did I end up building inside `./app` that
+Gate 0 didn't already route?* Then —
 
 - new platform-shaped code (an event log, a scheduler shim, model wiring, a secrets hack, a
   notifications store) → add or update a **🟡 Local stopgap** row, **citing the files**, so the
