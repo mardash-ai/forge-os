@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.10.0] — 2026-07-08
+
+### Added
+
+- **Production smoke suite (app-local first cut of C14).** A small, strictly **read-only /
+  non-destructive** HTTP suite that validates the *deployed* app end-to-end, kept **out** of the
+  hermetic offline unit run. New `app/tests/smoke/prod.smoke.ts` + `app/vitest.smoke.config.ts`
+  (includes only `tests/smoke/**`) run via `npm run smoke:prod` (`vitest run -c
+  vitest.smoke.config.ts`, host-run, needs outbound internet). Target host comes from **`SMOKE_URL`**
+  (fallback `BASE_URL`), defaulting to `https://forge-os.mardash.ai`, so the same suite points at
+  dev/staging. Every request is a fresh, cookie-less `fetch` with `redirect: 'manual'`. Assertions:
+  `GET /api/health` → 200 public matching the C6 schema; `GET /` → `302` to `/auth/login?next=%2F`;
+  `GET /auth/config` encodes the intended prod config (`email`/`google`/`session_key`/`service_token`
+  configured, `password_signup` + `google` methods); `GET /auth/login` → 200 `text/html` with both
+  methods (email+password fields and a `/auth/google` link); `/api/goals` + `/api/today` → `401`;
+  `/api/cron/habits-finalize` → `403` (service-scoped, not 401); `POST /auth/refresh` → `401` (no side
+  effect); `/status` → 200 public and `/status.json` reports a valid banner + a `db` component.
+  Verified green against prod (8/8). No signups, writes, emails, DB/volume ops, or deploy — safe to
+  re-run against prod repeatedly.
+
+### Changed
+
+- **Exclude `tests/smoke/**` from the hermetic unit run.** `app/vitest.config.ts` now excludes the
+  smoke directory so the offline `./forge test` (87 tests) never pulls in the internet-dependent
+  suite.
+
 ## [0.9.1] — 2026-07-08
 
 ### Fixed
@@ -539,7 +565,8 @@ _This changelog started mid-project: the Goals & Tasks core and the Timeline →
 Reminders → Planner Agent → Habits features predate it; see `PROJECT_IDEA.md`'s roadmap and the git
 history for that record._
 
-[Unreleased]: https://github.com/mardash-ai/forge-os/compare/v0.9.1...HEAD
+[Unreleased]: https://github.com/mardash-ai/forge-os/compare/v0.10.0...HEAD
+[0.10.0]: https://github.com/mardash-ai/forge-os/compare/v0.9.1...v0.10.0
 [0.9.1]: https://github.com/mardash-ai/forge-os/compare/v0.9.0...v0.9.1
 [0.9.0]: https://github.com/mardash-ai/forge-os/compare/v0.8.3...v0.9.0
 [0.8.3]: https://github.com/mardash-ai/forge-os/compare/v0.8.2...v0.8.3

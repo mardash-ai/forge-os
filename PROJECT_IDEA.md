@@ -81,9 +81,10 @@ Finance Assistant ⬜ · Travel Planner ⬜.
 
 ## 3. Implementation status — where we actually are
 
-**Current app version: `0.9.0`** (SemVer in `app/package.json` / [CHANGELOG.md](CHANGELOG.md)). Six
-pages, fifteen API routes, Postgres-persisted, Next.js App Router + TypeScript + Vitest. Runs on the
-Forge platform at **`0.18.0`** (control + data-plane, digest-pinned).
+**Current app version: `0.10.0`** (SemVer in `app/package.json` / [CHANGELOG.md](CHANGELOG.md)). Six
+pages, fifteen API routes, Postgres-persisted, Next.js App Router + TypeScript + Vitest (plus a
+read-only **prod smoke suite**, run separately — see below). Runs on the Forge platform at **`0.18.0`**
+(control + data-plane, digest-pinned).
 
 > **🎨 Branded, and it ships a public status page.** The platform-served surfaces now wear forge-os's own
 > look, not a neutral default — a root `forge.theme.json` (derived from the app's committed dark
@@ -92,6 +93,17 @@ Forge platform at **`0.18.0`** (control + data-plane, digest-pinned).
 > adopted `0.9.0`, forge `0.18.0`). A **public `/status`** (+ `/status.json`) — proxied same-origin to
 > the data-plane and reachable with **no login** — aggregates the app's own `/api/health` (**C15**),
 > so an outage is visible without signing in.
+
+> **🔎 Production smoke suite (app-local first cut of C14).** A small, strictly **read-only /
+> non-destructive** HTTP suite validates the *deployed* app end-to-end: `/api/health` (public, C6
+> schema), the unauth login-gate redirect (`/` → `/auth/login?next=%2F`), `/auth/config` +
+> `/auth/login` (both methods present), the session/service gates (`/api/goals`, `/api/today` → 401;
+> `/api/cron/*` → 403), `POST /auth/refresh` → 401 (no side effect), and the public `/status` +
+> `/status.json`. It runs **outside** the hermetic offline unit run (`./forge test`) because it needs
+> outbound internet: `npm --prefix app run smoke:prod` (host-run vitest via `app/vitest.smoke.config.ts`
+> over `app/tests/smoke/prod.smoke.ts`). Target host from **`SMOKE_URL`** (fallback `BASE_URL`),
+> defaulting to `https://forge-os.mardash.ai`, so the same suite can point at dev/staging. Safe to
+> re-run against prod repeatedly.
 
 > **✅ Security status: authenticated + fully multi-user isolated.** The app is **gated** — every page and
 > `/api/*` route requires a valid session, served by the platform's hosted **Identity / Auth** capability

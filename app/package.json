@@ -1,13 +1,14 @@
 {
   "name": "forge-os",
-  "version": "0.9.1",
+  "version": "0.10.0",
   "private": true,
   "scripts": {
     "dev": "next dev -H 0.0.0.0 -p 3000",
     "build": "next build",
     "start": "next start -H 0.0.0.0 -p 3000",
     "lint": "next lint",
-    "test": "vitest run"
+    "test": "vitest run",
+    "smoke:prod": "vitest run -c vitest.smoke.config.ts"
   },
   "dependencies": {
     "jose": "5.9.6",
