@@ -61,7 +61,7 @@ services:
   # prod theme + status behave identically. NOT written by `forge provision` — re-add
   # after a re-provision.
   data-plane:
-    image: ghcr.io/mardash-ai/forge-data-plane:0.18.0@sha256:132a5ea84b2bac0b0d9504571bdbd4d8e154e283eec78b6ee01a4da20a318662
+    image: ghcr.io/mardash-ai/forge-data-plane:0.19.0@sha256:b05af0b672231b43b5f3f2bae6febc2b2a93aa794e988107fed69019fc342a58
     pull_policy: missing
     environment:
       - PORT=3718

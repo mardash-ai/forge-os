@@ -81,16 +81,21 @@ Finance Assistant ⬜ · Travel Planner ⬜.
 
 ## 3. Implementation status — where we actually are
 
-**Current app version: `0.10.0`** (SemVer in `app/package.json` / [CHANGELOG.md](CHANGELOG.md)). Six
+**Current app version: `0.10.1`** (SemVer in `app/package.json` / [CHANGELOG.md](CHANGELOG.md)). Six
 pages, fifteen API routes, Postgres-persisted, Next.js App Router + TypeScript + Vitest (plus a
-read-only **prod smoke suite**, run separately — see below). Runs on the Forge platform at **`0.18.0`**
-(control + data-plane, digest-pinned).
+read-only **prod smoke suite**, run separately — see below). Runs on the Forge platform at **`0.19.0`**
+(control + data-plane, digest-pinned) — a maintenance bump that hardened the deploy path (a **drift
+gate** that fails loudly on a stale/absent image, plus force-recreate onto the pinned digest — the
+deploy now self-verifies) and simplified the C16 theme (below).
 
 > **🎨 Branded, and it ships a public status page.** The platform-served surfaces now wear forge-os's own
 > look, not a neutral default — a root `forge.theme.json` (derived from the app's committed dark
 > "forge floor" palette: slag/iron surfaces, forge-orange primary, amber/heat accent, Instrument Sans)
 > paints the hosted **auth** pages (`/auth/*`) and the new status page in `--forge-*` tokens (**C16**,
-> adopted `0.9.0`, forge `0.18.0`). A **public `/status`** (+ `/status.json`) — proxied same-origin to
+> adopted `0.9.0`, forge `0.18.0`). Forge `0.19.0`'s C16 fix makes the base `colors{}` the *entire* dark
+> palette for a pinned `mode:"dark"`, so the theme's redundant `dark{}` mirror block was **dropped**
+> (`0.10.1`) — the render is byte-identical (`--forge-color-bg:#16120e`, dark surfaces/text unchanged).
+> A **public `/status`** (+ `/status.json`) — proxied same-origin to
 > the data-plane and reachable with **no login** — aggregates the app's own `/api/health` (**C15**),
 > so an outage is visible without signing in.
 

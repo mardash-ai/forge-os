@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.10.1] — 2026-07-08
+
+### Changed
+
+- **Consume forge `0.19.0` (control + data-plane) — a maintenance bump that self-verifies the deploy (P14).**
+  Bump `FORGE_IMAGE` → `forge-control-plane:0.19.0@sha256:d57148a1…` (dev `compose.yaml`) and the
+  data-plane → `forge-data-plane:0.19.0@sha256:b05af0b6…` (dev `app/compose.yaml` + prod
+  `app/compose.prod.yaml` + `app/forge.app.json`), multi-arch (amd64+arm64), digest-pinned (R1). The
+  `web` image is unchanged (no app-code change → no rebuild). `0.19.0` hardens the rollout: a **drift
+  gate** fails loudly if a running image ≠ its pinned digest (or a pull left it absent — no more silent
+  stale deploys), and it force-recreates digest-pinned sidecars + the control plane onto their pins, so
+  `make deploy` now self-verifies.
+- **Re-run `forge productionize` on the `0.19.0` data-plane pin.** Regenerates `app/compose.prod.yaml`
+  with the new data-plane digest while keeping the `web` pin, the theme mount
+  (`FORGE_THEME_FILE=/app/forge.theme.json`), and the C15 status-callback env (`FORGE_APP_CALLBACK_HOST`
+  / `FORGE_APP_CALLBACK_PORT` / `FORGE_READINESS_PATH`). Re-adds the hand-added `app/.env.prod` migration
+  note to `app/PROVISIONING.md` that productionize drops (P13).
+
+### Removed
+
+- **Drop the now-redundant `dark{}` block from `app/forge.theme.json` (C16 fix in forge `0.19.0`).** For
+  a pinned `mode:"dark"`, forge `0.19.0` makes the base `colors{}` the **entire** dark palette (neutral
+  surfaces included), so the `dark{}` block only mirrored `colors{}`. Removing it leaves the render
+  **byte-identical** — proved before/after under the `0.19.0` data-plane: `/theme.css` still emits
+  `--forge-color-bg:#16120e`, surface `#2a231d`, text `#efe7da` in dark mode.
+
 ## [0.10.0] — 2026-07-08
 
 ### Added
@@ -565,7 +591,8 @@ _This changelog started mid-project: the Goals & Tasks core and the Timeline →
 Reminders → Planner Agent → Habits features predate it; see `PROJECT_IDEA.md`'s roadmap and the git
 history for that record._
 
-[Unreleased]: https://github.com/mardash-ai/forge-os/compare/v0.10.0...HEAD
+[Unreleased]: https://github.com/mardash-ai/forge-os/compare/v0.10.1...HEAD
+[0.10.1]: https://github.com/mardash-ai/forge-os/compare/v0.10.0...v0.10.1
 [0.10.0]: https://github.com/mardash-ai/forge-os/compare/v0.9.1...v0.10.0
 [0.9.1]: https://github.com/mardash-ai/forge-os/compare/v0.9.0...v0.9.1
 [0.9.0]: https://github.com/mardash-ai/forge-os/compare/v0.8.3...v0.9.0

@@ -18,18 +18,5 @@
     "warning": "#e9a93c",
     "danger": "#d0503a"
   },
-  "dark": {
-    "primary": "#cb5320",
-    "primaryContrast": "#1a0f07",
-    "accent": "#e9a93c",
-    "background": "#16120e",
-    "surface": "#2a231d",
-    "text": "#efe7da",
-    "textMuted": "#a69c90",
-    "border": "#3a312a",
-    "success": "#7fb083",
-    "warning": "#e9a93c",
-    "danger": "#d0503a"
-  },
   "custom_css": ".forge-body, body { background-image: radial-gradient(120% 80% at 50% 118%, rgba(203, 83, 32, 0.10), transparent 60%); background-attachment: fixed; }"
 }
