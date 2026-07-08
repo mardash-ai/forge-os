@@ -27,6 +27,8 @@ services:
       - AUTH_SERVICE_TOKEN=${AUTH_SERVICE_TOKEN:-}
       - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID:-}
       - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET:-}
+      - SMTP_URL=${SMTP_URL:-}
+      - EMAIL_FROM=${EMAIL_FROM:-}
     depends_on:
       postgres:
         condition: service_healthy
@@ -54,7 +56,7 @@ services:
       - "traefik.http.services.forge-os.loadbalancer.healthcheck.interval=10s"
 
   data-plane:
-    image: ghcr.io/mardash-ai/forge-data-plane:0.15.1@sha256:804f5c4747844a6500a35461afd9e39ae2b0755675e4cdabfa5e0582348639fe
+    image: ghcr.io/mardash-ai/forge-data-plane:0.17.0@sha256:465ae7cc9ed0c7ab08975b6e458cff6e956790312b6be3db49f6f977ee793fee
     restart: unless-stopped
     environment:
       - PORT=3718
@@ -67,6 +69,8 @@ services:
       - AUTH_SERVICE_TOKEN=${AUTH_SERVICE_TOKEN:-}
       - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID:-}
       - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET:-}
+      - SMTP_URL=${SMTP_URL:-}
+      - EMAIL_FROM=${EMAIL_FROM:-}
       - FORGE_JOBS_FILE=/app/forge.jobs.json
     volumes:
       - forge_state:/forge-state

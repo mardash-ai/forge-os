@@ -81,18 +81,25 @@ Finance Assistant ⬜ · Travel Planner ⬜.
 
 ## 3. Implementation status — where we actually are
 
-**Current app version: `0.7.0`** (SemVer in `app/package.json` / [CHANGELOG.md](CHANGELOG.md)). Six
-pages, fifteen API routes, Postgres-persisted, Next.js App Router + TypeScript + Vitest.
+**Current app version: `0.8.0`** (SemVer in `app/package.json` / [CHANGELOG.md](CHANGELOG.md)). Six
+pages, fifteen API routes, Postgres-persisted, Next.js App Router + TypeScript + Vitest. Runs on the
+Forge platform at **`0.17.0`** (control + data-plane, digest-pinned).
 
 > **✅ Security status: authenticated + fully multi-user isolated.** The app is **gated** — every page and
 > `/api/*` route requires a valid session, served by the platform's hosted **Identity / Auth** capability
 > (**C10**, adopted `0.6.0`: Google OAuth + email/password, multi-user signup, a hosted login surface, a
-> session middleware). `/api/cron/*` is service-token'd; `/api/health` stays public. **Per-user data
-> *ownership* is now shipped too** — every resource is scoped to its owner (the session `userId`): the app's
-> own tables carry an `owner_id` and every query filters by the session user (a cross-owner by-id fetch is a
-> 404, never a 403), and the shared platform stores (C1/C3/C4) stamp + filter by the same opaque `owner`.
-> Two users share the deployment yet see entirely separate apps (**Epic M · M2**, authorization, **C11**,
-> adopted `0.7.0`, verified live with two users; §5/§6).
+> session middleware). `/api/cron/*` is service-token'd; `/api/health` stays public. **Sessions are now
+> short-lived + revocable** (adopted `0.8.0`, forge `0.17.0` P8/P9): the access `forge_session` is short
+> (~15 min); the middleware silently refreshes it against `POST /auth/refresh` using an opaque, rotating
+> `forge_refresh` cookie, so you stay signed in without a round-trip on the common path — but **logout /
+> password-reset / revocation are immediate** (the refresh chain dies server-side; a dead session is no
+> longer valid-until-exp). **Per-user data *ownership* is shipped too** — every resource is scoped to its
+> owner (the session `userId`): the app's own tables carry an `owner_id` and every query filters by the
+> session user (a cross-owner by-id fetch is a 404, never a 403), and the shared platform stores (C1/C3/C4)
+> stamp + filter by the same opaque `owner`. Two users share the deployment yet see entirely separate apps
+> (**Epic M · M2**, authorization, **C11**, adopted `0.7.0`, verified live with two users; §5/§6).
+> **Operators get a generated provisioning runbook** — `forge productionize` emits `app/PROVISIONING.md`
+> + an annotated `app/.env.prod.example` naming exactly this app's secrets (C13, forge `0.17.0`).
 
 ### 3a. Product feature milestones (what a user can do)
 
@@ -414,10 +421,13 @@ test firing: the app hit a wall, and Forge grew an **Identity / Auth** capabilit
 > coarse edge gate (Traefik basic-auth / shared passphrase) was needed; the real capability landed
 > first.
 
-- **M1 · Authentication — gate the app** — ✅ **shipped / adopted (`0.6.0`, via C10).** The app is
-  fully gated on the platform's hosted Identity/Auth: Google OAuth + email/password, multi-user
-  signup, a hosted login surface, and a session middleware over **all** routes; `/api/cron/*` is
-  service-token'd and `/api/health` stays public. *(Spec of record below.)* · *User can:* sign
+- **M1 · Authentication — gate the app** — ✅ **shipped / adopted (`0.6.0`, via C10; refresh-revocation
+  session model adopted `0.8.0`, forge `0.17.0` P8/P9).** The app is fully gated on the platform's hosted
+  Identity/Auth: Google OAuth + email/password, multi-user signup, a hosted login surface, and a session
+  middleware over **all** routes; `/api/cron/*` is service-token'd and `/api/health` stays public. The
+  access `forge_session` is now short-lived (~15 min) and the middleware transparently refreshes it via a
+  same-origin `POST /auth/refresh` (opaque, rotating `forge_refresh` cookie), so **logout / reset / server-side
+  revocation take effect immediately** rather than lingering until token expiry. *(Spec of record below.)* · *User can:* sign
   in (email + password / magic link / OAuth Google or GitHub / passkey), stay signed in, sign out;
   unauthenticated requests to any page or `/api/*` route are rejected or redirected to login. ·
   *Introduces:* a **User / account** identity + sessions. · *Pressures Forge →* **Identity / Auth**

@@ -14,14 +14,12 @@ services:
       - HOST=0.0.0.0
       - PORT=3000
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
-      # C10 secrets (session key + cron service token) — injected from the Forge
-      # secret store at dev-run time; the middleware verifies the session cookie
-      # with AUTH_SESSION_SECRET and gates /api/cron/* on AUTH_SERVICE_TOKEN.
       - AUTH_SESSION_SECRET=${AUTH_SESSION_SECRET:-}
       - AUTH_SERVICE_TOKEN=${AUTH_SERVICE_TOKEN:-}
-      # Google OAuth is a human step (a real Google app) — declared, unset locally.
       - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID:-}
       - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET:-}
+      - SMTP_URL=${SMTP_URL:-}
+      - EMAIL_FROM=${EMAIL_FROM:-}
       # C3 · app event log — the app emits/reads its own events against the control
       # plane in dev. NOTE: `forge provision` regenerates this file and doesn't know
       # these vars — re-add them (and the data-plane below) after a re-provision.
@@ -49,11 +47,13 @@ services:
   # single-app it INFERS the app, so the same-origin /auth/* proxy works identically
   # in dev and prod with no app param. It shares the control plane's state dir
   # (../.forge) so it sees the seeded owner + the same encrypted secret vault (hence
-  # the same AUTH_SESSION_SECRET the web tier verifies with). Local http only:
-  # FORGE_AUTH_INSECURE_COOKIES=1 issues non-Secure cookies. NOT written by
-  # `forge provision` — re-add after a re-provision.
+  # the same AUTH_SESSION_SECRET the web tier verifies with). As of forge 0.17.0 it
+  # also issues the SHORT-LIVED access `forge_session` + the opaque `forge_refresh`
+  # cookie and serves POST /auth/refresh (P8/P9) — the refresh the middleware calls.
+  # Local http only: FORGE_AUTH_INSECURE_COOKIES=1 issues non-Secure cookies. NOT
+  # written by `forge provision` — re-add after a re-provision.
   data-plane:
-    image: ghcr.io/mardash-ai/forge-data-plane:0.15.1@sha256:804f5c4747844a6500a35461afd9e39ae2b0755675e4cdabfa5e0582348639fe
+    image: ghcr.io/mardash-ai/forge-data-plane:0.17.0@sha256:465ae7cc9ed0c7ab08975b6e458cff6e956790312b6be3db49f6f977ee793fee
     pull_policy: missing
     environment:
       - PORT=3718

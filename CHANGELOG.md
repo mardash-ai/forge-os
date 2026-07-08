@@ -7,6 +7,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.0] — 2026-07-08
+
+### Added
+
+- **Adopt forge `0.17.0`'s refresh-revocation session model (P8/P9) — stay signed in through short-lived
+  access, but make logout/reset take effect immediately.** The access `forge_session` is now short-lived
+  (~15 min), so the gate is no longer "verify or reject." When it is absent/expired/invalid **and** an
+  opaque `forge_refresh` cookie is present, `middleware.ts` makes a server-side, same-origin
+  `POST /auth/refresh` (forwarding the request cookies). On `200` it copies the two rotated `Set-Cookie`
+  headers onto the response **and reflects them into the current request** so the same render's server code
+  (`requireOwner`/`getSession`) verifies the fresh token — no bounce, no 500, and no round-trip on the common
+  (unexpired) path. On `401` the session is truly dead (logout / reset / server-side revocation): the gate
+  honors the platform's cookie-clear and 302s a page to `/auth/login` (401s an `/api/*` route). Public
+  (`/auth/*`, `/api/health`) and service (`/api/cron/*` token) paths are unchanged and never refresh.
+  Verified live (dev, `FORGE_AUTH_INSECURE_COOKIES=1`): login sets **both** cookies (access `exp` = `iat`+900s;
+  `forge_refresh` opaque, `Path=/; HttpOnly; SameSite=Lax; Max-Age≈30d`); a genuinely-expired-but-signed access
+  token + a valid refresh renders the protected page and **rotates both cookies**; logout then makes
+  `POST /auth/refresh` return `401 {error:{code:'unauthenticated'}}` and the gate bounce to login — a dead
+  session, not one valid-until-exp.
+- **Adopt the C13 provisioning-doc generator (forge `0.17.0`) — a generated operator runbook + annotated env
+  template.** `forge productionize` now emits `app/PROVISIONING.md` (per secret: capability · required/optional
+  · what it is · how to obtain) and an annotated `app/.env.prod.example` (a `#` comment block per secret),
+  listing exactly this app's secrets. `PROVISIONING.md` carries the **"Enabling a working sign-in method"**
+  section with the Google redirect URI `https://forge-os.mardash.ai/auth/google/callback`. Real values stay
+  in the gitignored `app/.env.prod` (a human step).
+
+### Changed
+
+- **Declare the C10/C12 auth + email secrets so prod interpolates them.** `forge provision` now declares
+  `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `SMTP_URL`, and `EMAIL_FROM` (names only — values are the
+  human's, in `app/.env.prod`); the regenerated `app/compose.prod.yaml` injects all four into the web **and**
+  data-plane containers. `AUTH_SESSION_SECRET`/`AUTH_SERVICE_TOKEN` are unchanged.
+- **Pin the Forge platform images to `0.17.0`** (multi-arch, `linux/arm64` confirmed) — the release carrying
+  P8/P9 (refresh) and C13 (provisioning docs): control-plane in `compose.yaml`
+  (`forge-control-plane:0.17.0@sha256:69fe7ea2…`) and data-plane in `app/compose.yaml`, `app/compose.prod.yaml`,
+  and `app/forge.app.json` (`forge-data-plane:0.17.0@sha256:465ae7cc…`). The app's own web image is unchanged.
+- **Un-stale the docs.** `PROJECT_IDEA.md` now records the short-lived + revocable session model and the
+  generated provisioning runbook; `DEPLOY.md` notes the repo now runs on forge `0.17.0` (which still carries
+  the P10/P11 deploy fixes). The full prod cutover (real Google OAuth app + SMTP creds + the box roll) stays a
+  human step; the dev-level verification above is green.
+
 ## [0.7.1] — 2026-07-07
 
 ### Fixed
@@ -394,7 +435,8 @@ _This changelog started mid-project: the Goals & Tasks core and the Timeline →
 Reminders → Planner Agent → Habits features predate it; see `PROJECT_IDEA.md`'s roadmap and the git
 history for that record._
 
-[Unreleased]: https://github.com/mardash-ai/forge-os/compare/v0.7.1...HEAD
+[Unreleased]: https://github.com/mardash-ai/forge-os/compare/v0.8.0...HEAD
+[0.8.0]: https://github.com/mardash-ai/forge-os/compare/v0.7.1...v0.8.0
 [0.7.1]: https://github.com/mardash-ai/forge-os/compare/v0.7.0...v0.7.1
 [0.7.0]: https://github.com/mardash-ai/forge-os/compare/v0.6.1...v0.7.0
 [0.6.1]: https://github.com/mardash-ai/forge-os/compare/v0.6.0...v0.6.1

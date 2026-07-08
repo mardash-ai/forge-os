@@ -196,8 +196,9 @@ Also: `forge deploy`'s `--compose-file` now **defaults** to `app/compose.prod.ya
 ## Platform papercuts — FIXED upstream in forge 0.15.1 (P10 + P11)
 
 Two generic traps cost real time bringing the authenticated build live during the C10 auth cutover;
-both were platform-side, not app bugs, and both are now **fixed in forge `0.15.1`** (this repo runs on
-it). Kept here as the record — the next person (and forge-starter) inherits the fix:
+both were platform-side, not app bugs, and both are now **fixed in forge `0.15.1`** (this repo now
+runs on `0.17.0`, which carries the fix). Kept here as the record — the next person (and forge-starter)
+inherits the fix:
 
 1. **Env-file name/location mismatch — FIXED (P10).** `forge productionize` emits the template as
    `app/.env.prod.example` and the generated compose's `${POSTGRES_PASSWORD:?…}` hint says *"set … in

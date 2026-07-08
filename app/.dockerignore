@@ -13,3 +13,4 @@ compose.prod.yaml
 .env.prod.example
 .forge
 README.md
+PROVISIONING.md
