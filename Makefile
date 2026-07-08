@@ -58,9 +58,14 @@ PROD := docker compose -f app/compose.prod.yaml --env-file app/.env.prod
 deploy:
 	$(MAKE) up          # ensure the control plane is running (idempotent; pulls control-plane image if missing)
 	# `forge deploy` (>=0.11.1) defaults --compose-file to the canonical stack `forge productionize`
-	# emits, app/compose.prod.yaml (P7.2), and (>=0.15.1) defaults --env-file to app/.env.prod (P10)
-	# — so a plain `forge deploy` loads the prod secrets with no explicit flags.
-	./forge deploy --app forge-os --proxy-net proxy
+	# emits, app/compose.prod.yaml (P7.2), and (>=0.15.1) defaults --env-file to app/.env.prod (P10).
+	# We pass `--env-file app/.env.prod` EXPLICITLY: forge's default only passes it *when the file
+	# exists*, so on a box that still has a plain app/.env (pre-0.15.1) it would silently fall back to
+	# Compose's default (app/.env) — reading stale secrets and IGNORING app/.env.prod edits (the trap
+	# that hid SMTP). Passing it explicitly makes a missing app/.env.prod a LOUD error, not a silent
+	# fallback. One prod secrets file, unambiguously: app/.env.prod. (Migrate a plain app/.env with
+	# `cp app/.env app/.env.prod` — see DEPLOY.md.)
+	./forge deploy --app forge-os --proxy-net proxy --env-file app/.env.prod
 	@$(PROD) ps
 	@echo ""
 	@echo "Deployed forge-os (zero-downtime roll via forge deploy).  Public:  https://forge-os.mardash.ai/api/health"

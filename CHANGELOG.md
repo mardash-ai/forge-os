@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.1] — 2026-07-08
+
+### Fixed
+
+- **Reconcile prod secrets onto ONE unambiguous file — `app/.env.prod` — and close the silent-`app/.env`
+  fallback that hid SMTP.** On a box that still carried a plain `app/.env` (pre-`0.15.1`) with no
+  `app/.env.prod`, `forge deploy` passed no `--env-file` (its default is sent *only when the file
+  exists*), so Compose fell back to its default env file — **`app/.env`** (resolved in the `app/` dir) —
+  and every var added to `app/.env.prod` per `PROVISIONING.md` was silently ignored: the deploy stayed up
+  and Google sign-in worked (`configured.google:true`), but `SMTP_URL`/`EMAIL_FROM` were never read so
+  email stayed off (`configured.email:false`). `make deploy` now runs `forge deploy … --env-file
+  app/.env.prod` **explicitly**, so a missing `app/.env.prod` is a loud error, not a silent fallback to
+  `app/.env`; the raw-compose helpers (`make deploy-config/ps/logs/down`) already name the same file.
+- **Document the one-time migration for existing boxes** so there is one clear prod secrets file. `DEPLOY.md`
+  (step 4) and the generated `app/PROVISIONING.md` now tell an operator who still has a plain `app/.env` to
+  migrate once — `cp app/.env app/.env.prod`, add `SMTP_URL` (URL-encode reserved chars, e.g. `@`→`%40`) +
+  `EMAIL_FROM`, `rm app/.env`, redeploy, then re-check `GET /auth/config` → `"email":true`. Verified with
+  `docker compose -f app/compose.prod.yaml config` that a bare run reads `app/.env` while `--env-file
+  app/.env.prod` reads that file, and that `SMTP_URL`/`EMAIL_FROM` interpolate into **both** the `web` and
+  `data-plane` services. Flags the residual forge-side papercut: the platform silently reads Compose's
+  default (`app/.env`) when the explicit `--env-file` target (`app/.env.prod`) is absent.
+
 ## [0.8.0] — 2026-07-08
 
 ### Added
@@ -435,7 +457,8 @@ _This changelog started mid-project: the Goals & Tasks core and the Timeline →
 Reminders → Planner Agent → Habits features predate it; see `PROJECT_IDEA.md`'s roadmap and the git
 history for that record._
 
-[Unreleased]: https://github.com/mardash-ai/forge-os/compare/v0.8.0...HEAD
+[Unreleased]: https://github.com/mardash-ai/forge-os/compare/v0.8.1...HEAD
+[0.8.1]: https://github.com/mardash-ai/forge-os/compare/v0.8.0...v0.8.1
 [0.8.0]: https://github.com/mardash-ai/forge-os/compare/v0.7.1...v0.8.0
 [0.7.1]: https://github.com/mardash-ai/forge-os/compare/v0.7.0...v0.7.1
 [0.7.0]: https://github.com/mardash-ai/forge-os/compare/v0.6.1...v0.7.0

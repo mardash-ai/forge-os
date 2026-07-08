@@ -69,14 +69,34 @@ multi-arch (`amd64` + `arm64`).
    echo "$GHCR_PAT" | docker login ghcr.io -u <your-gh-user> --password-stdin   # PAT needs read:packages
    ```
 4. **Create `app/.env.prod`** from the example (it's gitignored, so a fresh checkout has none).
-   > **⚠ It's `app/.env.prod`, NOT a repo-root `.env`/`.env.prod`.** `forge deploy` (>=`0.15.1`)
-   > defaults `--env-file` to **`app/.env.prod`** (P10) — the same name the example
-   > (`app/.env.prod.example`) and the compose `${POSTGRES_PASSWORD:?…set…in .env.prod}` hint use — so
-   > a plain `forge deploy` loads it. A repo-root `.env` is the *dev control-plane's* and is not read
-   > by the prod stack.
+   > **⚠ THE prod secrets file is `app/.env.prod` — NOT `app/.env`, and NOT a repo-root `.env`/`.env.prod`.**
+   > `make deploy` runs `forge deploy … --env-file app/.env.prod` (explicit), and the raw-compose
+   > helpers (`make deploy-config/ps/logs/down`) name the same file — so `app/.env.prod` is the single,
+   > unambiguous source of every prod secret. It's the same name the example (`app/.env.prod.example`)
+   > and the compose `${POSTGRES_PASSWORD:?…set…in .env.prod}` hint use. A repo-root `.env` is the *dev
+   > control-plane's* (`FORGE_PORT`/`FORGE_IMAGE`) and is **not** read by the prod stack.
    ```bash
    cp app/.env.prod.example app/.env.prod && chmod 600 app/.env.prod
    ```
+   > **⚠ Already have a plain `app/.env` on this box (pre-`0.15.1`)? MIGRATE IT — this is the SMTP trap.**
+   > Before the explicit `--env-file`, a plain `forge deploy` had **no** `--env-file` when `app/.env.prod`
+   > was absent, so Compose fell back to its default — **`app/.env`** (resolved in the `app/` dir). The
+   > deploy *looked* healthy (Google sign-in worked — those creds were in `app/.env`) while every var you
+   > added to `app/.env.prod` per PROVISIONING.md was **silently ignored** — the file the deploy read
+   > wasn't the file the docs told you to edit. That's exactly how SMTP stayed off (`configured.email:false`).
+   > Fix it once, so there's one file:
+   > ```bash
+   > cp app/.env app/.env.prod          # carry EVERY existing secret over (Google, POSTGRES_PASSWORD, …)
+   > # then add the SMTP vars to app/.env.prod:
+   > #   SMTP_URL=smtp://USER:PASSWORD@HOST:PORT   (URL-encode reserved chars — e.g. '@' in the user → %40)
+   > #   EMAIL_FROM=Your Name <no-reply@your-domain>
+   > chmod 600 app/.env.prod
+   > rm app/.env                         # remove the stale file so nothing can read it by accident
+   > ```
+   > Then redeploy (`./release/deploy.sh` or `make deploy` on the box) and re-check
+   > `curl -s https://forge-os.mardash.ai/auth/config` → `"email":true`. Because `make deploy` now passes
+   > `--env-file app/.env.prod` explicitly, a **missing** `app/.env.prod` is now a loud error, not a
+   > silent fallback.
    Then fill it in. `POSTGRES_PASSWORD` is the only **hard-required** var — the compose uses
    `${POSTGRES_PASSWORD:?…}`, so an unset value fails `forge deploy` at interpolation *before any
    container starts*. The rest are optional but the app degrades without them: empty
@@ -118,7 +138,7 @@ multi-arch (`amd64` + `arm64`).
 
 | Command | What it does |
 |---|---|
-| `make deploy` | start the control plane (idempotent) → **`forge deploy`** (C7): reconcile `postgres`/`data-plane` in place, then a **zero-downtime start-first roll of `web`** → `ps`. `release/deploy.sh` runs `git pull --ff-only` first, so this deploys the current checkout. |
+| `make deploy` | start the control plane (idempotent) → **`forge deploy … --env-file app/.env.prod`** (C7): reconcile `postgres`/`data-plane` in place, then a **zero-downtime start-first roll of `web`** → `ps`. `release/deploy.sh` runs `git pull --ff-only` first, so this deploys the current checkout. The explicit `--env-file` means the single prod secrets file is **`app/.env.prod`** — no silent fallback to `app/.env`. |
 | `make deploy-ps` | container status |
 | `make deploy-logs` | tail all logs |
 | `make deploy-config` | validate `app/compose.prod.yaml` + `app/.env.prod` interpolation (no changes) |
@@ -208,6 +228,18 @@ inherits the fix:
    only when the file exists; overridable), so the example name, the compose hint, and the deploy
    default now **all agree on `app/.env.prod`** and a plain `forge deploy` loads your prod secrets.
    (Confirm: `./forge deploy --help` shows `--env-file … (default: "app/.env.prod")`.)
+   > **Residual operator-side trap (the "only when the file exists" clause).** The fix removed the
+   > mismatch for a *fresh* box, but there's still a gap on a box that predates it: because forge's
+   > default `--env-file` is passed **only when `app/.env.prod` exists**, a box that still carries a
+   > plain **`app/.env`** (and no `app/.env.prod`) makes `forge deploy` fall back to Compose's default
+   > (`app/.env`) — so it deploys, Google works, and every edit you make to `app/.env.prod` (per
+   > PROVISIONING.md) does nothing because that file isn't the one being read. This is exactly what hid
+   > SMTP (`configured.email:false` with Google up). **This repo now closes it app-side:** `make deploy`
+   > passes `--env-file app/.env.prod` **explicitly**, so a missing file is a loud error, not a silent
+   > fallback — and step 4 above tells you to migrate `cp app/.env app/.env.prod`. *(Platform note: the
+   > silent compose-default fallback when the explicit `--env-file` target is absent is a forge-side
+   > papercut — forge could error, or warn, when `app/.env.prod` is missing but a plain `app/.env` is
+   > present, rather than quietly reading the wrong file.)*
 2. **`next.config.mjs` rewrites baked at BUILD time — FIXED (P11).** The C10 auth adoption proxied
    `/auth/*` to the data-plane via `rewrites()` reading `process.env.FORGE_DATA_PLANE_URL` behind an
    `if (!url) return []` guard. That var is only set at **runtime** (compose), so the CI image build

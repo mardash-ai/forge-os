@@ -5,6 +5,14 @@
 
 Public host: `forge-os.mardash.ai`. Real values live in `app/.env.prod` (never committed) — this file only explains them.
 
+> **⚠ Put every value in `app/.env.prod` — that is THE single prod secrets file `forge deploy` reads.**
+> `make deploy` runs `forge deploy … --env-file app/.env.prod` explicitly, so nothing else is consulted
+> in prod. If your box still has an older plain **`app/.env`**, the deploy used to *silently* fall back to
+> it and ignore `app/.env.prod` — so anything you added here (e.g. `SMTP_URL`) had no effect while Google
+> kept working. Migrate once: `cp app/.env app/.env.prod`, add the new vars, `rm app/.env`, redeploy. See
+> **DEPLOY.md → "First-time setup on the box", step 4** for the exact steps. *(This note is hand-added;
+> `forge productionize` doesn't yet emit it — re-running productionize will drop it until forge carries it.)*
+
 ## What this app needs
 
 | Secret | Capability | Requirement | What it is |
