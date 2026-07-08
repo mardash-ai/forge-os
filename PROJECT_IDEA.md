@@ -81,9 +81,17 @@ Finance Assistant ⬜ · Travel Planner ⬜.
 
 ## 3. Implementation status — where we actually are
 
-**Current app version: `0.8.0`** (SemVer in `app/package.json` / [CHANGELOG.md](CHANGELOG.md)). Six
+**Current app version: `0.9.0`** (SemVer in `app/package.json` / [CHANGELOG.md](CHANGELOG.md)). Six
 pages, fifteen API routes, Postgres-persisted, Next.js App Router + TypeScript + Vitest. Runs on the
-Forge platform at **`0.17.0`** (control + data-plane, digest-pinned).
+Forge platform at **`0.18.0`** (control + data-plane, digest-pinned).
+
+> **🎨 Branded, and it ships a public status page.** The platform-served surfaces now wear forge-os's own
+> look, not a neutral default — a root `forge.theme.json` (derived from the app's committed dark
+> "forge floor" palette: slag/iron surfaces, forge-orange primary, amber/heat accent, Instrument Sans)
+> paints the hosted **auth** pages (`/auth/*`) and the new status page in `--forge-*` tokens (**C16**,
+> adopted `0.9.0`, forge `0.18.0`). A **public `/status`** (+ `/status.json`) — proxied same-origin to
+> the data-plane and reachable with **no login** — aggregates the app's own `/api/health` (**C15**),
+> so an outage is visible without signing in.
 
 > **✅ Security status: authenticated + fully multi-user isolated.** The app is **gated** — every page and
 > `/api/*` route requires a valid session, served by the platform's hosted **Identity / Auth** capability

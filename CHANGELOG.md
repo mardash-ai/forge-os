@@ -7,6 +7,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.0] — 2026-07-08
+
+### Added
+
+- **Adopt C16 — brand the platform-served UI to match forge-os.** A root `app/forge.theme.json` (derived
+  from the app's committed dark "forge floor" palette — slag/iron surfaces `#16120e`/`#2a231d`,
+  forge-orange primary `#cb5320`, amber-heat accent `#e9a93c`, chalk/ash text, Instrument Sans, `6px`
+  radius, an ember `logo`/`favicon`, and the app's ambient-heat radial glow as `custom_css`) repaints the
+  hosted auth pages (`/auth/*`) and the status page in `--forge-*` tokens instead of the neutral default.
+  Carries a `dark{}` block so the neutral surfaces resolve to forge-os's dark palette (the platform applies
+  the base `colors{}` neutrals only in light mode; brand/semantic colors apply in both). `forge
+  productionize` mounts it into the data-plane sidecar (`FORGE_THEME_FILE=/app/forge.theme.json`).
+- **Adopt C15 — a public status page.** Proxy the data-plane's `/status` (themed HTML) + `/status.json`
+  same-origin; both are **public** and aggregate the app's own C6 `/api/health` into an overall banner +
+  per-component rows (web, db, data plane), so an outage is visible without signing in.
+
+### Changed
+
+- **Consume forge `0.18.0` (control + data-plane).** Bump `FORGE_IMAGE` →
+  `forge-control-plane:0.18.0@sha256:5cbc0788…` (dev `compose.yaml`) and the data-plane →
+  `forge-data-plane:0.18.0@sha256:132a5ea8…` (dev `app/compose.yaml` + prod `app/compose.prod.yaml` +
+  `app/forge.app.json`), multi-arch (amd64+arm64), digest-pinned (R1).
+- **Proxy `/status`, `/status.json`, `/theme.css` same-origin (`app/next.config.mjs`).** Same always-on
+  rewrite pattern as `/auth/*` — defaulted to the in-cluster `http://data-plane:3718` and always emitted,
+  so they survive `next build` with no build-time env (P11).
+- **Open the gate for the public status surface (`app/middleware.ts`).** `/status` + `/status.json` join
+  the public prefixes (`/theme.css` is already skipped by the static-asset matcher), so `/status` renders
+  with no login redirect.
+- **Regenerate the prod stack via `forge productionize`.** The data-plane sidecar now also gets the C15
+  callback env (`FORGE_APP_CALLBACK_HOST=web` / `FORGE_APP_CALLBACK_PORT=3000` /
+  `FORGE_READINESS_PATH=/api/health` — which also fixes prod C2 scheduler callbacks) and the C16 theme
+  mount. Dev `app/compose.yaml` mirrors the theme + callback env so dev and prod behave identically.
+  Re-adds the hand-added `app/.env.prod` migration note to `PROVISIONING.md` that productionize drops (P13).
+
 ## [0.8.3] — 2026-07-08
 
 ### Fixed
@@ -493,7 +527,8 @@ _This changelog started mid-project: the Goals & Tasks core and the Timeline →
 Reminders → Planner Agent → Habits features predate it; see `PROJECT_IDEA.md`'s roadmap and the git
 history for that record._
 
-[Unreleased]: https://github.com/mardash-ai/forge-os/compare/v0.8.3...HEAD
+[Unreleased]: https://github.com/mardash-ai/forge-os/compare/v0.9.0...HEAD
+[0.9.0]: https://github.com/mardash-ai/forge-os/compare/v0.8.3...v0.9.0
 [0.8.3]: https://github.com/mardash-ai/forge-os/compare/v0.8.2...v0.8.3
 [0.8.2]: https://github.com/mardash-ai/forge-os/compare/v0.8.1...v0.8.2
 [0.8.1]: https://github.com/mardash-ai/forge-os/compare/v0.8.0...v0.8.1

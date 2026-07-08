@@ -56,7 +56,7 @@ services:
       - "traefik.http.services.forge-os.loadbalancer.healthcheck.interval=10s"
 
   data-plane:
-    image: ghcr.io/mardash-ai/forge-data-plane:0.17.0@sha256:465ae7cc9ed0c7ab08975b6e458cff6e956790312b6be3db49f6f977ee793fee
+    image: ghcr.io/mardash-ai/forge-data-plane:0.18.0@sha256:132a5ea84b2bac0b0d9504571bdbd4d8e154e283eec78b6ee01a4da20a318662
     restart: unless-stopped
     environment:
       - PORT=3718
@@ -64,6 +64,9 @@ services:
       - FORGE_APP_REPO_PATH=/app
       - FORGE_STATE_DIR=/forge-state
       - FORGE_SECRETS_KEY=${FORGE_SECRETS_KEY:-}
+      - FORGE_APP_CALLBACK_HOST=web
+      - FORGE_APP_CALLBACK_PORT=3000
+      - FORGE_READINESS_PATH=/api/health
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
       - AUTH_SESSION_SECRET=${AUTH_SESSION_SECRET:-}
       - AUTH_SERVICE_TOKEN=${AUTH_SERVICE_TOKEN:-}
@@ -72,9 +75,11 @@ services:
       - SMTP_URL=${SMTP_URL:-}
       - EMAIL_FROM=${EMAIL_FROM:-}
       - FORGE_JOBS_FILE=/app/forge.jobs.json
+      - FORGE_THEME_FILE=/app/forge.theme.json
     volumes:
       - forge_state:/forge-state
       - ./forge.jobs.json:/app/forge.jobs.json:ro
+      - ./forge.theme.json:/app/forge.theme.json:ro
     networks:
       - internal
     stop_grace_period: 15s

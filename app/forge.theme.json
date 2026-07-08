@@ -1,0 +1,35 @@
+{
+  "name": "Forge·OS",
+  "mode": "dark",
+  "font": "'Instrument Sans', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif",
+  "radius": "6px",
+  "logo": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA2NCA2NCIgd2lkdGg9IjY0IiBoZWlnaHQ9IjY0IiByb2xlPSJpbWciIGFyaWEtbGFiZWw9IkZvcmdlLU9TIj48ZGVmcz48cmFkaWFsR3JhZGllbnQgaWQ9ImUiIGN4PSI1MCUiIGN5PSI0MCUiIHI9IjYyJSI+PHN0b3Agb2Zmc2V0PSIwJSIgc3RvcC1jb2xvcj0iI2ZkZjNkOCIvPjxzdG9wIG9mZnNldD0iNDIlIiBzdG9wLWNvbG9yPSIjZjJiNjRlIi8+PHN0b3Agb2Zmc2V0PSI3NCUiIHN0b3AtY29sb3I9IiNjYjUzMjAiLz48c3RvcCBvZmZzZXQ9IjEwMCUiIHN0b3AtY29sb3I9IiM4YTM1MTAiLz48L3JhZGlhbEdyYWRpZW50PjwvZGVmcz48Y2lyY2xlIGN4PSIzMiIgY3k9IjMyIiByPSIxOSIgZmlsbD0idXJsKCNlKSIvPjwvc3ZnPgo=",
+  "favicon": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAzMiAzMiIgd2lkdGg9IjMyIiBoZWlnaHQ9IjMyIj48ZGVmcz48cmFkaWFsR3JhZGllbnQgaWQ9ImUiIGN4PSI1MCUiIGN5PSI0MCUiIHI9IjYyJSI+PHN0b3Agb2Zmc2V0PSIwJSIgc3RvcC1jb2xvcj0iI2ZkZjNkOCIvPjxzdG9wIG9mZnNldD0iNDIlIiBzdG9wLWNvbG9yPSIjZjJiNjRlIi8+PHN0b3Agb2Zmc2V0PSI3NCUiIHN0b3AtY29sb3I9IiNjYjUzMjAiLz48c3RvcCBvZmZzZXQ9IjEwMCUiIHN0b3AtY29sb3I9IiM4YTM1MTAiLz48L3JhZGlhbEdyYWRpZW50PjwvZGVmcz48cmVjdCB3aWR0aD0iMzIiIGhlaWdodD0iMzIiIHJ4PSI3IiBmaWxsPSIjMTYxMjBlIi8+PGNpcmNsZSBjeD0iMTYiIGN5PSIxNiIgcj0iOSIgZmlsbD0idXJsKCNlKSIvPjwvc3ZnPgo=",
+  "colors": {
+    "primary": "#cb5320",
+    "primaryContrast": "#1a0f07",
+    "accent": "#e9a93c",
+    "background": "#16120e",
+    "surface": "#2a231d",
+    "text": "#efe7da",
+    "textMuted": "#a69c90",
+    "border": "#3a312a",
+    "success": "#7fb083",
+    "warning": "#e9a93c",
+    "danger": "#d0503a"
+  },
+  "dark": {
+    "primary": "#cb5320",
+    "primaryContrast": "#1a0f07",
+    "accent": "#e9a93c",
+    "background": "#16120e",
+    "surface": "#2a231d",
+    "text": "#efe7da",
+    "textMuted": "#a69c90",
+    "border": "#3a312a",
+    "success": "#7fb083",
+    "warning": "#e9a93c",
+    "danger": "#d0503a"
+  },
+  "custom_css": ".forge-body, body { background-image: radial-gradient(120% 80% at 50% 118%, rgba(203, 83, 32, 0.10), transparent 60%); background-attachment: fixed; }"
+}

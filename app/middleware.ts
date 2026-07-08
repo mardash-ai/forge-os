@@ -5,6 +5,11 @@
 //   • /auth/*        the hosted auth surface (login/logout/signup/reset + refresh),
 //                    proxied same-origin to the platform via the next.config rewrite.
 //   • /api/health    public readiness probe (C6) — load balancers hit it unauth.
+//   • /status,       the platform's PUBLIC status page + JSON (C15), proxied
+//     /status.json   same-origin to the data-plane (which aggregates our C6 health).
+//                    Public by design: an outage page must render with NO login
+//                    redirect. (/theme.css — C16 — is a static-asset path the
+//                    matcher below already skips, so it never reaches this gate.)
 //   • /api/cron/*    service-scoped: admitted ONLY on a matching service token
 //                    (the C2 scheduler attaches it on cron callbacks), never on a
 //                    user session.
@@ -33,7 +38,10 @@ import { SESSION_COOKIE, verifySessionToken } from '@/lib/auth';
 const REFRESH_COOKIE = 'forge_refresh';
 
 // Public (no session) and service (token) path prefixes.
-const PUBLIC_PREFIXES = ['/auth', '/api/health'];
+// `/status` + `/status.json` are the public C15 status surface (see header) —
+// listed separately because `/status.json` is NOT a child segment of `/status`,
+// so the `p + '/'` rule below would miss it without its own entry.
+const PUBLIC_PREFIXES = ['/auth', '/api/health', '/status', '/status.json'];
 const SERVICE_PREFIX = '/api/cron';
 
 function isPublic(pathname: string): boolean {

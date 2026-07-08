@@ -52,8 +52,16 @@ services:
   # cookie and serves POST /auth/refresh (P8/P9) — the refresh the middleware calls.
   # Local http only: FORGE_AUTH_INSECURE_COOKIES=1 issues non-Secure cookies. NOT
   # written by `forge provision` — re-add after a re-provision.
+  #
+  # As of forge 0.18.0 it ALSO serves the branded /theme.css (C16 — the --forge-*
+  # tokens from forge.theme.json, mounted at /app via `.:/app:ro`, pointed at by
+  # FORGE_THEME_FILE) and the public /status + /status.json (C15), which probe the
+  # web tier's C6 health at FORGE_APP_CALLBACK_HOST:PORT + FORGE_READINESS_PATH.
+  # These mirror what `forge productionize` bakes into compose.prod.yaml so dev and
+  # prod theme + status behave identically. NOT written by `forge provision` — re-add
+  # after a re-provision.
   data-plane:
-    image: ghcr.io/mardash-ai/forge-data-plane:0.17.0@sha256:465ae7cc9ed0c7ab08975b6e458cff6e956790312b6be3db49f6f977ee793fee
+    image: ghcr.io/mardash-ai/forge-data-plane:0.18.0@sha256:132a5ea84b2bac0b0d9504571bdbd4d8e154e283eec78b6ee01a4da20a318662
     pull_policy: missing
     environment:
       - PORT=3718
@@ -62,6 +70,10 @@ services:
       - FORGE_STATE_DIR=/forge-state
       - FORGE_AUTH_INSECURE_COOKIES=1
       - FORGE_JOBS_FILE=/app/forge.jobs.json
+      - FORGE_THEME_FILE=/app/forge.theme.json
+      - FORGE_APP_CALLBACK_HOST=web
+      - FORGE_APP_CALLBACK_PORT=3000
+      - FORGE_READINESS_PATH=/api/health
     volumes:
       - ../.forge:/forge-state
       - .:/app:ro
