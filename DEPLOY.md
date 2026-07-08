@@ -56,6 +56,42 @@ the box and runs `make deploy` in `~/projects/forge-os`. Verify: `curl -sf https
 Both publish **continuously** (push to `main` → `:latest` + `:sha-<short>`; a tag → `:X.Y.Z`),
 multi-arch (`amd64` + `arm64`).
 
+## Shipping NEW app code — the web image is digest-pinned; `make deploy` does NOT rebuild it
+
+`make deploy` is **pull-and-run**: it rolls the `web` service using the **literal digest** pinned in
+[`app/compose.prod.yaml`](app/compose.prod.yaml) (`web: … forge-os-app@sha256:…`). It does **not**
+build from source and does **not** follow `:latest`. So `git pull` + `make deploy` **does not ship new
+app code by itself** — the pin still points at the old image. Shipping app code is two parts, and
+skipping part 1 silently deploys the *previous* web build:
+
+1. **Repin the web image to the freshly built digest, THEN deploy.** CI
+   ([`publish-app.yml`](.github/workflows/publish-app.yml)) builds a new web image on every push to
+   `main` (`:latest` + `:sha-<short>`), but nothing repoints the compose pin at it — the pin is a
+   fixed digest, by design (R1). After your app-code commit is on `main` **and** CI has published,
+   resolve that image's digest and re-run `forge productionize` to bake it in:
+   ```bash
+   # 1. Resolve the digest of the newest CI web build (needs `docker login ghcr.io`):
+   docker buildx imagetools inspect ghcr.io/mardash-ai/forge-os-app:latest --format '{{.Manifest.Digest}}'
+   #    → sha256:<NEWWEB>     (or target :sha-<short> of your main commit for an exact build)
+   # 2. Regenerate the prod stack with the new web pin (KEEP the current data-plane pin):
+   ./forge productionize --app forge-os \
+     --web-image ghcr.io/mardash-ai/forge-os-app@sha256:<NEWWEB> \
+     --data-plane-image ghcr.io/mardash-ai/forge-data-plane:0.17.0@sha256:465ae7cc9ed0c7ab08975b6e458cff6e956790312b6be3db49f6f977ee793fee
+   # 3. Commit + push the regenerated app/compose.prod.yaml (+ app/forge.app.json) so the box git-pulls it.
+   ```
+   Do **not** hand-edit the digest in the compose — `forge productionize` also rewrites
+   `app/forge.app.json`'s `production.web_image`, and a hand-edit drifts the two apart.
+2. **Deploy** (below). Now that the pin names the new build, `make deploy` rolls `web` onto it.
+
+> **Why this bites (the incident of record).** The C10 login-fixed web image (`…a553…`) was pinned at
+> the auth cutover, then *preserved* verbatim across the forge-`0.15.1` and forge-`0.17.0` adoptions
+> ("the app's own web image is unchanged"). So the **0.8.0 refresh middleware**
+> (`app/middleware.ts` → server-side `POST /auth/refresh`) reached `main` but **never reached prod** —
+> no one repinned the web image, and `make deploy` faithfully re-ran the old digest. This matters
+> **together with the data-plane**: data-plane `0.17.0` issues ~15-min access tokens, so a web build
+> **without** the refresh middleware would drop every session after 15 min. Land the new web image
+> **and** the `0.17.0` data-plane in the **same** deploy.
+
 ## First-time setup on the box (once per box)
 
 `deploy.sh` assumes the box is already set up. Bringing forge-os up the first time:
@@ -131,6 +167,22 @@ multi-arch (`amd64` + `arm64`).
 > `docker compose -f app/compose.prod.yaml pull`, then re-deploy. The **control-plane image**
 > (`FORGE_IMAGE`, started by `make deploy` → `make up` to run `forge deploy`) has the same gotcha —
 > pull it once the same way (`docker compose pull` in the repo root) so `make up` finds it cached.
+
+> **Verify the data-plane actually recreated (the `/auth/refresh` 404 + `email:false` trap).** A new
+> **data-plane** pin only takes effect if the sidecar is recreated onto the new image — which requires
+> that image to be **cached** on the box (see the keychain note above). If it wasn't cached, the
+> non-fatal pull leaves the sidecar on the **old** image (e.g. `0.15.0`): `POST /auth/refresh` **404s**
+> (the endpoint ships in data-plane `0.16.0`+) and `GET /auth/config` shows `email:false` (the old
+> container still runs the old env — your `SMTP_URL`/`EMAIL_FROM` never got interpolated in). After a
+> deploy, confirm the running image:
+> ```bash
+> make deploy-ps        # = docker compose -f app/compose.prod.yaml --env-file app/.env.prod ps
+> ```
+> If `data-plane` is still on the old image, cache the new one (keychain-unlock + `docker compose -f
+> app/compose.prod.yaml pull`, above), then force-recreate **just** that sidecar with the prod env:
+> ```bash
+> docker compose -f app/compose.prod.yaml --env-file app/.env.prod up -d --force-recreate data-plane
+> ```
 
 ## `make deploy` (what runs on the box)
 

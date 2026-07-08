@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.2] — 2026-07-08
+
+### Fixed
+
+- **Document the two-part deploy so `git pull` + `make deploy` can't silently ship the OLD web build
+  (`DEPLOY.md`).** `make deploy` is **pull-and-run**: it rolls `web` on the **literal digest** pinned in
+  `app/compose.prod.yaml`, never a rebuild and never `:latest`. Shipping new app code therefore requires
+  **first** repinning that digest — resolve the newest CI build's digest (`docker buildx imagetools
+  inspect ghcr.io/mardash-ai/forge-os-app:latest --format '{{.Manifest.Digest}}'`) and re-run `forge
+  productionize --web-image …@sha256:<new> --data-plane-image …0.17.0@sha256:465ae7cc…`, commit + push,
+  **then** deploy. Records the incident this closes: the C10 `…a553…` web image was preserved across the
+  forge-`0.15.1`/`0.17.0` adoptions, so the **0.8.0 refresh middleware** (`app/middleware.ts` →
+  `POST /auth/refresh`) reached `main` but never prod. Because data-plane `0.17.0` issues ~15-min access
+  tokens, the new web build (with refresh) and the `0.17.0` data-plane MUST land in the **same** deploy.
+- **Document verifying the data-plane actually recreated after a deploy (`DEPLOY.md`).** A new data-plane
+  pin only takes effect if the sidecar is recreated onto the new image, which needs that image **cached**
+  on the box — otherwise the non-fatal (keychain-locked-over-SSH) pull leaves it on the **old** image
+  (e.g. `0.15.0`): `POST /auth/refresh` **404s** and `GET /auth/config` shows `email:false` (old container
+  = old env, no SMTP). Adds the check (`make deploy-ps`) and the fix — cache the image, then `docker
+  compose -f app/compose.prod.yaml --env-file app/.env.prod up -d --force-recreate data-plane`.
+
 ## [0.8.1] — 2026-07-08
 
 ### Fixed
@@ -457,7 +478,8 @@ _This changelog started mid-project: the Goals & Tasks core and the Timeline →
 Reminders → Planner Agent → Habits features predate it; see `PROJECT_IDEA.md`'s roadmap and the git
 history for that record._
 
-[Unreleased]: https://github.com/mardash-ai/forge-os/compare/v0.8.1...HEAD
+[Unreleased]: https://github.com/mardash-ai/forge-os/compare/v0.8.2...HEAD
+[0.8.2]: https://github.com/mardash-ai/forge-os/compare/v0.8.1...v0.8.2
 [0.8.1]: https://github.com/mardash-ai/forge-os/compare/v0.8.0...v0.8.1
 [0.8.0]: https://github.com/mardash-ai/forge-os/compare/v0.7.1...v0.8.0
 [0.7.1]: https://github.com/mardash-ai/forge-os/compare/v0.7.0...v0.7.1
