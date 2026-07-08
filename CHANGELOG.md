@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.1] — 2026-07-08
+
+### Fixed
+
+- **Repin the prod web image to the 0.9.0 CI build so the deploy actually ships the C15/C16 adoption.**
+  `make deploy` is pull-and-run on the literal digest in `app/compose.prod.yaml`, so the C15/C16
+  `next.config.mjs` rewrites (`/status`, `/status.json`, `/theme.css`) only reach prod on a **fresh web
+  image**. Re-runs `forge productionize` to pin `web` at `ghcr.io/mardash-ai/forge-os-app@sha256:0581377d…`
+  (the CI build of `0.9.0` / commit `18df31a`, tag `:sha-18df31a`, confirmed `== :latest`), keeping the
+  data-plane at `0.18.0@sha256:132a5ea8…`, so the next `make deploy` lands both tiers current in one roll
+  (the pairing `DEPLOY.md` requires). Pin/config only — no app runtime change.
+
 ## [0.9.0] — 2026-07-08
 
 ### Added
@@ -527,7 +539,8 @@ _This changelog started mid-project: the Goals & Tasks core and the Timeline →
 Reminders → Planner Agent → Habits features predate it; see `PROJECT_IDEA.md`'s roadmap and the git
 history for that record._
 
-[Unreleased]: https://github.com/mardash-ai/forge-os/compare/v0.9.0...HEAD
+[Unreleased]: https://github.com/mardash-ai/forge-os/compare/v0.9.1...HEAD
+[0.9.1]: https://github.com/mardash-ai/forge-os/compare/v0.9.0...v0.9.1
 [0.9.0]: https://github.com/mardash-ai/forge-os/compare/v0.8.3...v0.9.0
 [0.8.3]: https://github.com/mardash-ai/forge-os/compare/v0.8.2...v0.8.3
 [0.8.2]: https://github.com/mardash-ai/forge-os/compare/v0.8.1...v0.8.2

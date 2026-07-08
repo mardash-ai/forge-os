@@ -13,7 +13,7 @@ networks:
 
 services:
   web:
-    image: ghcr.io/mardash-ai/forge-os-app@sha256:d24f3bc120f5edd91a299c7fe33e46d1fe7a14b904cbf6e625366a7a8b68678b
+    image: ghcr.io/mardash-ai/forge-os-app@sha256:0581377dc668c4181037faacba77bb851f66af8b4785db5f0835c1f2fafa7f99
     restart: unless-stopped
     environment:
       - NODE_ENV=production
