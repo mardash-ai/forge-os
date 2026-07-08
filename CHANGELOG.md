@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.3] — 2026-07-08
+
+### Fixed
+
+- **Repin the prod web image to the published 0.8.x refresh build so a deploy actually ships the refresh
+  middleware.** `app/compose.prod.yaml` + `app/forge.app.json` still pinned the pre-refresh C10 web image
+  (`…a553…`), which predates the **0.8.0 refresh middleware** (`app/middleware.ts` → `POST /auth/refresh`);
+  a deploy on that pin ran the OLD app against the `0.17.0` data-plane (short-lived access tokens, no client
+  refresh). Re-runs `forge productionize` to pin `web` at
+  `ghcr.io/mardash-ai/forge-os-app@sha256:d24f3bc1…` — the current CI build of app HEAD (tag `:sha-721316a`,
+  confirmed `== :latest`) — while keeping the data-plane at `0.17.0@sha256:465ae7cc…`, so the operator's next
+  `make deploy` lands **both** tiers current in the same roll (the pairing `DEPLOY.md` / 0.8.2 require).
+  Pin/config only — no app runtime change. Re-adds the hand-added `app/.env.prod` note to `PROVISIONING.md`
+  that productionize drops.
+
 ## [0.8.2] — 2026-07-08
 
 ### Fixed
@@ -478,7 +493,8 @@ _This changelog started mid-project: the Goals & Tasks core and the Timeline →
 Reminders → Planner Agent → Habits features predate it; see `PROJECT_IDEA.md`'s roadmap and the git
 history for that record._
 
-[Unreleased]: https://github.com/mardash-ai/forge-os/compare/v0.8.2...HEAD
+[Unreleased]: https://github.com/mardash-ai/forge-os/compare/v0.8.3...HEAD
+[0.8.3]: https://github.com/mardash-ai/forge-os/compare/v0.8.2...v0.8.3
 [0.8.2]: https://github.com/mardash-ai/forge-os/compare/v0.8.1...v0.8.2
 [0.8.1]: https://github.com/mardash-ai/forge-os/compare/v0.8.0...v0.8.1
 [0.8.0]: https://github.com/mardash-ai/forge-os/compare/v0.7.1...v0.8.0
