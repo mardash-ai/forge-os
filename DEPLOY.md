@@ -21,7 +21,7 @@ the deploy (the start-first roll), never to build.
 
 > **You don't build on the host.** CI builds and publishes the images; the box just pulls and runs
 > them. The box's git checkout provides the manifests (`app/compose.prod.yaml`, `deploy/`), the
-> gitignored `app/.env` (prod secrets), and the control-plane image runs the deploy.
+> gitignored `app/.env.prod` (prod secrets), and the control-plane image runs the deploy.
 >
 > **The prod stack is GENERATED now (C8 · productionize).** `app/compose.prod.yaml`, `app/Dockerfile`,
 > `app/.dockerignore`, and `app/.env.prod.example` are emitted by `forge productionize` — do not
@@ -68,14 +68,14 @@ multi-arch (`amd64` + `arm64`).
    ```bash
    echo "$GHCR_PAT" | docker login ghcr.io -u <your-gh-user> --password-stdin   # PAT needs read:packages
    ```
-4. **Create `app/.env`** from the example (it's gitignored, so a fresh checkout has none).
-   > **⚠ It's `app/.env`, NOT a repo-root `.env`.** `forge deploy` runs `docker compose -f
-   > app/compose.prod.yaml` with no `--env-file`, so Compose loads the `.env` file from the compose
-   > file's own directory — `app/.env`. A repo-root `.env` is the *dev control-plane's* and is not
-   > read by the prod stack. (The example is named `app/.env.prod.example`, but the file it becomes
-   > is `app/.env` — see "Platform papercuts" below.)
+4. **Create `app/.env.prod`** from the example (it's gitignored, so a fresh checkout has none).
+   > **⚠ It's `app/.env.prod`, NOT a repo-root `.env`/`.env.prod`.** `forge deploy` (>=`0.15.1`)
+   > defaults `--env-file` to **`app/.env.prod`** (P10) — the same name the example
+   > (`app/.env.prod.example`) and the compose `${POSTGRES_PASSWORD:?…set…in .env.prod}` hint use — so
+   > a plain `forge deploy` loads it. A repo-root `.env` is the *dev control-plane's* and is not read
+   > by the prod stack.
    ```bash
-   cp app/.env.prod.example app/.env && chmod 600 app/.env
+   cp app/.env.prod.example app/.env.prod && chmod 600 app/.env.prod
    ```
    Then fill it in. `POSTGRES_PASSWORD` is the only **hard-required** var — the compose uses
    `${POSTGRES_PASSWORD:?…}`, so an unset value fails `forge deploy` at interpolation *before any
@@ -121,7 +121,7 @@ multi-arch (`amd64` + `arm64`).
 | `make deploy` | start the control plane (idempotent) → **`forge deploy`** (C7): reconcile `postgres`/`data-plane` in place, then a **zero-downtime start-first roll of `web`** → `ps`. `release/deploy.sh` runs `git pull --ff-only` first, so this deploys the current checkout. |
 | `make deploy-ps` | container status |
 | `make deploy-logs` | tail all logs |
-| `make deploy-config` | validate `app/compose.prod.yaml` + `app/.env` interpolation (no changes) |
+| `make deploy-config` | validate `app/compose.prod.yaml` + `app/.env.prod` interpolation (no changes) |
 | `make deploy-down` | stop the stack, **keep** the data volumes |
 
 ## Zero-downtime deploys — the Forge `Deploy` capability (C7)
@@ -193,22 +193,26 @@ the box is still a **human-box** step (pending). What the fixed generator now em
 Also: `forge deploy`'s `--compose-file` now **defaults** to `app/compose.prod.yaml` (P7.2), so
 `make deploy` no longer passes it explicitly. Confirm the roll on the box.
 
-## Platform papercuts (surfaced during the C10 auth cutover — worth reporting upstream)
+## Platform papercuts — FIXED upstream in forge 0.15.1 (P10 + P11)
 
-Two generic traps cost real time bringing the authenticated build live; both are platform-side, not
-app bugs. Documented here so the next person (and forge-starter) doesn't re-discover them:
+Two generic traps cost real time bringing the authenticated build live during the C10 auth cutover;
+both were platform-side, not app bugs, and both are now **fixed in forge `0.15.1`** (this repo runs on
+it). Kept here as the record — the next person (and forge-starter) inherits the fix:
 
-1. **Env-file name/location mismatch.** `forge productionize` emits the template as
+1. **Env-file name/location mismatch — FIXED (P10).** `forge productionize` emits the template as
    `app/.env.prod.example` and the generated compose's `${POSTGRES_PASSWORD:?…}` hint says *"set … in
-   .env.prod"* — but `forge deploy` runs `docker compose -f app/compose.prod.yaml` with **no
-   `--env-file`**, so Compose only reads **`app/.env`**. Secrets placed in a repo-root `.env` or
-   `.env.prod` are silently ignored and the deploy fails at interpolation. *Fix upstream:* make the
-   example/hint name match what the deploy reads (`app/.env`), or pass `--env-file`.
-2. **`next.config.mjs` rewrites are baked at BUILD time.** The C10 auth adoption proxied `/auth/*` to
-   the data-plane via `rewrites()` reading `process.env.FORGE_DATA_PLANE_URL` with an `if (!url) return
-   []` guard. That var is only set at **runtime** (compose), so the CI image build compiled the
-   rewrite away → `/auth/login` 404'd → the gate redirected users to a non-existent page. *Fix (done
-   here):* default the destination to the in-cluster `http://data-plane:3718` and always emit the
-   rewrite (a runtime var still overrides under `next dev`). Any productionized app whose config reads
-   a runtime-only env in `rewrites()`/`headers()`/`redirects()` will hit this — the generated
-   `next.config.mjs` pattern should not gate on build-absent env.
+   .env.prod"*, but `forge deploy` used to run `docker compose -f app/compose.prod.yaml` with **no
+   `--env-file`** — so Compose only read **`app/.env`** and secrets in `app/.env.prod` were silently
+   ignored. **forge `0.15.1` makes `forge deploy` default `--env-file` to `app/.env.prod`** (passed
+   only when the file exists; overridable), so the example name, the compose hint, and the deploy
+   default now **all agree on `app/.env.prod`** and a plain `forge deploy` loads your prod secrets.
+   (Confirm: `./forge deploy --help` shows `--env-file … (default: "app/.env.prod")`.)
+2. **`next.config.mjs` rewrites baked at BUILD time — FIXED (P11).** The C10 auth adoption proxied
+   `/auth/*` to the data-plane via `rewrites()` reading `process.env.FORGE_DATA_PLANE_URL` behind an
+   `if (!url) return []` guard. That var is only set at **runtime** (compose), so the CI image build
+   compiled the rewrite away → `/auth/login` 404'd. This app already hand-worked-around it (default the
+   destination to the in-cluster `http://data-plane:3718` and **always** emit the rewrite; a runtime
+   var still overrides under `next dev`) — and forge `0.15.1` makes exactly that the **canonical
+   generated `next.config.mjs`** (generator + `init` scaffold), so new apps inherit it and never re-hit
+   the trap. Verified here: a clean image build with no `FORGE_DATA_PLANE_URL` still bakes the
+   `/auth/:path*` → `http://data-plane:3718` rule into `.next/routes-manifest.json`.

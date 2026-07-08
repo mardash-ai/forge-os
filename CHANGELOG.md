@@ -7,6 +7,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.1] — 2026-07-07
+
+### Fixed
+
+- **Adopt the two C8 deploy-blocker fixes from forge `0.15.1` (P10 + P11) — a plain `forge deploy` now
+  ships prod cleanly.** Both surfaced during this app's C10 auth prod cutover and are now fixed
+  upstream; this repo runs on `0.15.1` and drops its local workarounds. (A full on-box prod roll — real
+  Google OAuth + SMTP + the roll — remains a **human step**; the dev-level verification below is green.)
+  - **P10 · env-file default.** `forge deploy` now defaults `--env-file` to **`app/.env.prod`** (passed
+    only when the file exists; overridable) — so the productionize example (`app/.env.prod.example`),
+    the compose `${POSTGRES_PASSWORD:?…set…in .env.prod}` hint, and the deploy default **all name
+    `app/.env.prod`**, and a plain `forge deploy` loads the prod secrets instead of silently ignoring
+    them. The canonical prod-secrets file moves `app/.env` → **`app/.env.prod`**; `DEPLOY.md` and the
+    `make deploy-*` helpers (now `--env-file app/.env.prod`) follow. Verified: `docker compose -f
+    app/compose.prod.yaml --env-file app/.env.prod config` resolves (exit 0) while the same command
+    **without** `--env-file` fails at `POSTGRES_PASSWORD` interpolation, and `forge deploy --help`
+    shows `--env-file … (default: "app/.env.prod")`.
+  - **P11 · always-on `/auth` rewrite.** The generated `next.config.mjs` now **always** emits the
+    `/auth/*` rewrite defaulted to `http://data-plane:3718` (a runtime `FORGE_DATA_PLANE_URL` still
+    overrides) — the exact pattern this app hand-worked-around during C10 is now canonical upstream.
+    Verified: a clean image build with **no** `FORGE_DATA_PLANE_URL` still bakes `/auth/:path*` →
+    `http://data-plane:3718` into the image's `.next/routes-manifest.json`.
+
+### Changed
+
+- **Pin the Forge platform images to `0.15.1`** (multi-arch, arm64 confirmed) — the release that
+  carries the P10/P11 deploy-blocker fixes: control-plane in `compose.yaml`
+  (`forge-control-plane:0.15.1@sha256:925ffd09…`), data-plane in `app/compose.yaml`,
+  `app/compose.prod.yaml`, and `app/forge.app.json` (`forge-data-plane:0.15.1@sha256:804f5c47…`). The
+  app's own web image is unchanged (already the login-fixed build).
+- **Fold `DEPLOY.md`'s "Platform papercuts" note into "FIXED in forge 0.15.1."** Both the env-file
+  mismatch (P10) and the build-time `rewrites()` trap (P11) are resolved upstream; the workaround prose
+  becomes the record of the fix that new apps (and forge-starter) now inherit.
+
 ## [0.7.0] — 2026-07-07
 
 ### Added
@@ -360,7 +394,8 @@ _This changelog started mid-project: the Goals & Tasks core and the Timeline →
 Reminders → Planner Agent → Habits features predate it; see `PROJECT_IDEA.md`'s roadmap and the git
 history for that record._
 
-[Unreleased]: https://github.com/mardash-ai/forge-os/compare/v0.7.0...HEAD
+[Unreleased]: https://github.com/mardash-ai/forge-os/compare/v0.7.1...HEAD
+[0.7.1]: https://github.com/mardash-ai/forge-os/compare/v0.7.0...v0.7.1
 [0.7.0]: https://github.com/mardash-ai/forge-os/compare/v0.6.1...v0.7.0
 [0.6.1]: https://github.com/mardash-ai/forge-os/compare/v0.6.0...v0.6.1
 [0.6.0]: https://github.com/mardash-ai/forge-os/compare/v0.5.0...v0.6.0
