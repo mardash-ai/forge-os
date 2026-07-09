@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import { Bricolage_Grotesque, IBM_Plex_Mono, Instrument_Sans } from 'next/font/google';
 import './globals.css';
+import { Footer } from '@/app/components/Footer';
 
 // Display — a crafted grotesque that reads as "forged", not delicate.
 const display = Bricolage_Grotesque({
@@ -35,7 +36,10 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" className={`${display.variable} ${body.variable} ${mono.variable}`}>
-      <body>{children}</body>
+      <body>
+        {children}
+        <Footer />
+      </body>
     </html>
   );
 }

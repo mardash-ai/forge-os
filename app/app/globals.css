@@ -1581,3 +1581,38 @@ a {
     animation: none;
   }
 }
+
+/* ============ site footer ============ */
+/* A quiet readout at the base of every app page — the OS instrument layer, in mono,
+   muted to --ash so it recedes. Aligned to the same 860px column as .wrap. */
+.site-footer {
+  border-top: 1px solid var(--iron-edge);
+  margin-top: 8px;
+}
+.site-footer-inner {
+  max-width: 860px;
+  margin: 0 auto;
+  padding: 18px 24px 28px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+  font-family: var(--mono);
+  font-size: 12px;
+  letter-spacing: 0.1em;
+  color: var(--ash);
+  font-variant-numeric: tabular-nums;
+}
+.footer-version {
+  color: var(--ash);
+}
+.footer-sep {
+  color: var(--iron-edge);
+}
+.footer-attribution {
+  color: var(--ash);
+}
+/* Isolated so it can become a real <a> to the Mardash marketing site later (C17). */
+.footer-brand {
+  color: var(--ash);
+}

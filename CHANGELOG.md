@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.11.0] — 2026-07-09
+
+### Added
+
+- **App footer — the live app version + a platform attribution, site-wide.** Add a muted footer to
+  the root layout (`app/app/components/Footer.tsx`, wired into `app/app/layout.tsx`) so every
+  app-owned page ends with a quiet telemetry row in the forge-floor aesthetic (mono, `--ash`, aligned
+  to the same 860px column as `.wrap`). It renders `v<X.Y.Z>` read **dynamically** from
+  `app/package.json` via `app/lib/version.ts` (a static import Next inlines at build time — correct in
+  the built/standalone app, never hardcoded, and it tracks every future `/commit-code` bump),
+  followed by a **static** "Powered by Mardash Forge" attribution. The brand label is isolated in its
+  own element (`.footer-brand`) as **link-ready markup**, so turning it into a link to the Mardash
+  marketing site later is a one-line change (lifting the attribution to the platform is tracked as
+  capability `C17`). Signed-out `/auth/*` pages are platform-served and out of scope. Spec:
+  `specs/app-footer/`.
+
 ## [0.10.1] — 2026-07-08
 
 ### Changed
@@ -591,7 +607,8 @@ _This changelog started mid-project: the Goals & Tasks core and the Timeline →
 Reminders → Planner Agent → Habits features predate it; see `PROJECT_IDEA.md`'s roadmap and the git
 history for that record._
 
-[Unreleased]: https://github.com/mardash-ai/forge-os/compare/v0.10.1...HEAD
+[Unreleased]: https://github.com/mardash-ai/forge-os/compare/v0.11.0...HEAD
+[0.11.0]: https://github.com/mardash-ai/forge-os/compare/v0.10.1...v0.11.0
 [0.10.1]: https://github.com/mardash-ai/forge-os/compare/v0.10.0...v0.10.1
 [0.10.0]: https://github.com/mardash-ai/forge-os/compare/v0.9.1...v0.10.0
 [0.9.1]: https://github.com/mardash-ai/forge-os/compare/v0.9.0...v0.9.1

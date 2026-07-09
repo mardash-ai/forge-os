@@ -81,7 +81,7 @@ Finance Assistant ⬜ · Travel Planner ⬜.
 
 ## 3. Implementation status — where we actually are
 
-**Current app version: `0.10.1`** (SemVer in `app/package.json` / [CHANGELOG.md](CHANGELOG.md)). Six
+**Current app version: `0.11.0`** (SemVer in `app/package.json` / [CHANGELOG.md](CHANGELOG.md)). Six
 pages, fifteen API routes, Postgres-persisted, Next.js App Router + TypeScript + Vitest (plus a
 read-only **prod smoke suite**, run separately — see below). Runs on the Forge platform at **`0.19.0`**
 (control + data-plane, digest-pinned) — a maintenance bump that hardened the deploy path (a **drift
@@ -136,8 +136,10 @@ deploy now self-verifies) and simplified the C16 theme (below).
 | **v2** | Reminders | [specs/reminders/](specs/reminders/) | `/notifications` inbox deriving overdue tasks + cold goals, dismiss + nav badge |
 | **v3** | Planner Agent | [specs/planner-agent/](specs/planner-agent/) | *Draft tasks with AI* → review cold "sketches" → accept; human always confirms. The first agent |
 | **v4** | Habits | [specs/habits/](specs/habits/) | Daily/weekly habits, idempotent check-ins, streak that climbs as heat and resets on a miss |
+| **v4+** | App footer | [specs/app-footer/](specs/app-footer/) | Site-wide footer (`0.11.0`): the live app version (`v<X.Y.Z>`, read dynamically from `package.json` — never hardcoded) + a static **"Powered by Mardash Forge"** attribution, isolated as link-ready markup (the platform lifts it later — tracked upstream as capability C17) |
 
-> **No new *product* feature has shipped since v4.** Everything in `0.1.1 → 0.5.0` was **platform
+> **The only *product* surface added since v4 is app chrome (the footer above); no new domain feature
+> has shipped.** Everything in `0.1.1 → 0.5.0` was **platform
 > modernization** — adopting Forge capabilities and retiring the app's stopgaps. That's the wind
 > tunnel working as designed, but it means the *feature* frontier (§5) is wide open.
 
