@@ -31,7 +31,7 @@
     "host": "forge-os.mardash.ai",
     "readiness_path": "/api/health",
     "web_image": "ghcr.io/mardash-ai/forge-os-app@sha256:0581377dc668c4181037faacba77bb851f66af8b4785db5f0835c1f2fafa7f99",
-    "data_plane_image": "ghcr.io/mardash-ai/forge-data-plane:0.19.0@sha256:b05af0b672231b43b5f3f2bae6febc2b2a93aa794e988107fed69019fc342a58",
+    "data_plane_image": "ghcr.io/mardash-ai/forge-data-plane:0.22.0@sha256:9de9a8a04ffd8b586ecaf8bf84ee7445edf3a71a8ecedf6cbd80c2498933da92",
     "cert_resolver": "letsencrypt"
   }
 }

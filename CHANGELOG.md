@@ -7,6 +7,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.12.0] — 2026-07-09
+
+### Added
+
+- **Enable the C15 uptime sampler (`FORGE_STATUS_SAMPLE`).** Turn on the data-plane's periodic C6
+  health sampler in the production stack (`FORGE_STATUS_SAMPLE=1`, `FORGE_STATUS_SAMPLE_INTERVAL=5m`
+  on the `data-plane` service in `app/compose.prod.yaml`) so `/status.json` gains a rolling `uptime`
+  section once a sample tick runs. Overridable from `app/.env.prod`; defaults on. Hand-added to the
+  generated stack — `forge productionize` does not emit it yet, so a future re-productionize will drop
+  it until forge carries a sampler option (noted inline).
+
+### Changed
+
+- **Consume forge `0.22.0` (control + data-plane) — fail-loud session secret, `forge verify`, uptime
+  sampler.** Bump `FORGE_IMAGE` → `forge-control-plane:0.22.0@sha256:e790de7d…` (dev `compose.yaml`)
+  and the data-plane → `forge-data-plane:0.22.0@sha256:9de9a8a0…` (dev `app/compose.yaml` + prod
+  `app/compose.prod.yaml` + `app/forge.app.json`), multi-arch (amd64+arm64), digest-pinned (R1). The
+  `web` image is unchanged in this commit — the app-code footer rebuild is repinned in a follow-up
+  once CI publishes it.
+- **Re-run `forge productionize` on the `0.22.0` pin — the prod stack now FAILS LOUD on a missing
+  session secret (P17).** Regenerates `app/compose.prod.yaml` so `AUTH_SESSION_SECRET` is
+  `${AUTH_SESSION_SECRET:?…}` (required + non-empty) on both the `web` and `data-plane` services — a
+  missing/empty session-signing key now aborts the deploy instead of silently rotating the key and
+  logging every signed-in user out (the P17 logout-on-deploy failure mode). The durable `forge_state`
+  + `postgres_data` volumes are preserved, so a deploy recreates containers without touching the
+  auth/session store. Re-add the hand-authored P13 `app/.env.prod` migration note that productionize
+  drops (`app/PROVISIONING.md`).
+
+### Fixed
+
+- **`./forge` wrapper — pass `--` before the CLI entry so option flags reach the CLI (P16).** Launch
+  the in-container CLI as `tsx -- src/cli/index.ts "$@"` (was `tsx src/cli/index.ts "$@"`) so `tsx`
+  stops option-parsing at `--` and forwards flags like `--env-file app/.env.prod` to the Forge CLI
+  instead of swallowing them. Without this, `make deploy` aborted on the explicit `--env-file` before
+  it could roll the production stack.
+
 ## [0.11.0] — 2026-07-09
 
 ### Added
@@ -607,7 +643,8 @@ _This changelog started mid-project: the Goals & Tasks core and the Timeline →
 Reminders → Planner Agent → Habits features predate it; see `PROJECT_IDEA.md`'s roadmap and the git
 history for that record._
 
-[Unreleased]: https://github.com/mardash-ai/forge-os/compare/v0.11.0...HEAD
+[Unreleased]: https://github.com/mardash-ai/forge-os/compare/v0.12.0...HEAD
+[0.12.0]: https://github.com/mardash-ai/forge-os/compare/v0.11.0...v0.12.0
 [0.11.0]: https://github.com/mardash-ai/forge-os/compare/v0.10.1...v0.11.0
 [0.10.1]: https://github.com/mardash-ai/forge-os/compare/v0.10.0...v0.10.1
 [0.10.0]: https://github.com/mardash-ai/forge-os/compare/v0.9.1...v0.10.0

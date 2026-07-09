@@ -23,7 +23,7 @@ services:
       - FORGE_DATA_PLANE_URL=http://data-plane:3718
       - DATABASE_URL=postgres://forge:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env.prod}@postgres:5432/forge_os
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
-      - AUTH_SESSION_SECRET=${AUTH_SESSION_SECRET:-}
+      - AUTH_SESSION_SECRET=${AUTH_SESSION_SECRET:?set AUTH_SESSION_SECRET in .env.prod (keep it STABLE across deploys) — a missing/empty session-signing key logs every signed-in user out on deploy}
       - AUTH_SERVICE_TOKEN=${AUTH_SERVICE_TOKEN:-}
       - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID:-}
       - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET:-}
@@ -56,7 +56,7 @@ services:
       - "traefik.http.services.forge-os.loadbalancer.healthcheck.interval=10s"
 
   data-plane:
-    image: ghcr.io/mardash-ai/forge-data-plane:0.19.0@sha256:b05af0b672231b43b5f3f2bae6febc2b2a93aa794e988107fed69019fc342a58
+    image: ghcr.io/mardash-ai/forge-data-plane:0.22.0@sha256:9de9a8a04ffd8b586ecaf8bf84ee7445edf3a71a8ecedf6cbd80c2498933da92
     restart: unless-stopped
     environment:
       - PORT=3718
@@ -67,8 +67,14 @@ services:
       - FORGE_APP_CALLBACK_HOST=web
       - FORGE_APP_CALLBACK_PORT=3000
       - FORGE_READINESS_PATH=/api/health
+      # C15 (P2) uptime sampler — the data-plane periodically samples the app's C6 health so
+      # /status.json gains an `uptime` section (rolling availability). Overridable from
+      # app/.env.prod on the box; defaults on. HAND-ADDED — `forge productionize` does not emit
+      # these yet, so a future re-productionize will DROP them until forge carries a sampler option.
+      - FORGE_STATUS_SAMPLE=${FORGE_STATUS_SAMPLE:-1}
+      - FORGE_STATUS_SAMPLE_INTERVAL=${FORGE_STATUS_SAMPLE_INTERVAL:-5m}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
-      - AUTH_SESSION_SECRET=${AUTH_SESSION_SECRET:-}
+      - AUTH_SESSION_SECRET=${AUTH_SESSION_SECRET:?set AUTH_SESSION_SECRET in .env.prod (keep it STABLE across deploys) — a missing/empty session-signing key logs every signed-in user out on deploy}
       - AUTH_SERVICE_TOKEN=${AUTH_SERVICE_TOKEN:-}
       - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID:-}
       - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET:-}

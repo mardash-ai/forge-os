@@ -23,4 +23,4 @@ fi
 
 exec docker compose exec -T \
   -e FORGE_API_URL="http://localhost:${PORT}" \
-  api ./node_modules/.bin/tsx src/cli/index.ts "$@"
+  api ./node_modules/.bin/tsx -- src/cli/index.ts "$@"

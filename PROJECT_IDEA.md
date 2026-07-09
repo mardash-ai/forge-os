@@ -81,12 +81,17 @@ Finance Assistant ⬜ · Travel Planner ⬜.
 
 ## 3. Implementation status — where we actually are
 
-**Current app version: `0.11.0`** (SemVer in `app/package.json` / [CHANGELOG.md](CHANGELOG.md)). Six
+**Current app version: `0.12.0`** (SemVer in `app/package.json` / [CHANGELOG.md](CHANGELOG.md)). Six
 pages, fifteen API routes, Postgres-persisted, Next.js App Router + TypeScript + Vitest (plus a
-read-only **prod smoke suite**, run separately — see below). Runs on the Forge platform at **`0.19.0`**
-(control + data-plane, digest-pinned) — a maintenance bump that hardened the deploy path (a **drift
-gate** that fails loudly on a stale/absent image, plus force-recreate onto the pinned digest — the
-deploy now self-verifies) and simplified the C16 theme (below).
+read-only **prod smoke suite**, run separately — see below). Runs on the Forge platform at **`0.22.0`**
+(control + data-plane, digest-pinned). `0.19.0` hardened the deploy path (a **drift gate** that fails
+loudly on a stale/absent image, plus force-recreate onto the pinned digest — the deploy self-verifies)
+and simplified the C16 theme (below); **`0.22.0`** makes the prod stack **fail loud on a missing/empty
+`AUTH_SESSION_SECRET`** (`${AUTH_SESSION_SECRET:?…}` on `web` + `data-plane`) so a deploy can no longer
+silently rotate the session-signing key and log everyone out (the **P17** logout-on-deploy fix), ships
+`forge verify` (a post-deploy contract smoke — the platform form of C14), and turns on the **C15 uptime
+sampler** (`FORGE_STATUS_SAMPLE=1`) so `/status.json` carries a rolling `uptime` section. The `./forge`
+wrapper also now forwards `--`-style flags to the CLI (the **P16** `make deploy` fix).
 
 > **🎨 Branded, and it ships a public status page.** The platform-served surfaces now wear forge-os's own
 > look, not a neutral default — a root `forge.theme.json` (derived from the app's committed dark
