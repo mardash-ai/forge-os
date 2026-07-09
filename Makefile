@@ -2,7 +2,7 @@
 # No local Node, npm, or build tools are assumed.
 
 .PHONY: up down logs shell ps restart pull new-app \
-        deploy deploy-ps deploy-logs deploy-config deploy-down
+        deploy release deploy-ps deploy-logs deploy-config deploy-down
 
 up:
 	docker compose up -d
@@ -48,28 +48,43 @@ pull:
 PROD := docker compose -f app/compose.prod.yaml --env-file app/.env.prod
 
 # Deploy the current checkout — run ON THE BOX (release/deploy.sh git-pulls, then runs this
-# over SSH). Zero-downtime is now a PLATFORM capability — `forge deploy` (C7): it reconciles
-# postgres/data-plane in place, then rolls the public `web` service START-FIRST (new replica up
-# and healthy, drained out of Traefik, before the old is removed), so forge-os.mardash.ai never
-# loses its backend. We start the Forge control plane transiently to run it; it rolls the LOCAL
-# prod stack over the Docker socket (no separate rollout script). Image pulls are non-fatal (the
-# Docker-Desktop keychain can't be read over SSH — cached images still deploy); to land brand-new
-# images, unlock the keychain + pull interactively first (see DEPLOY.md).
+# over SSH). The ENTIRE deploy pipeline is now ONE platform capability — `forge release` (C18,
+# forge >=0.23.0). It runs five ordered phases atomically + idempotently + fail-safe:
+#   1. assess   (read-only)  resolve HEAD, compute the web ref `…/forge-os-app:sha-<commit>`,
+#                            probe whether it's already published, read the current pin + host.
+#   2. publish  (ci mode)    poll GHCR until publish-app.yml's build for `sha-<commit>` resolves a
+#                            digest (bounded by --timeout/--poll-interval; retries transient errors).
+#   3. repin                 `forge productionize --web-image <ref>@sha256:…` (keeps the data plane).
+#   4. deploy                the C7 start-first roll + P14 drift gate + P16 tsx-- wrapper + P17
+#                            fail-loud secret — forge-os.mardash.ai never loses its backend.
+#   5. verify                the C14 post-deploy contract smoke against --host (the final gate).
+# Fail-safe: any phase that throws STOPS before the next (never half-applied); a failed roll keeps
+# the last-good replica serving; a red verify fails the release; a dirty tree is refused before any
+# mutation. Re-running RESUMES from the first unsatisfied phase (a landed re-run is a no-op). This
+# retires the ~10-step by-hand publish→wait→resolve→repin→deploy→verify flow — all inside one call.
+#
+# We pass `--env-file app/.env.prod` EXPLICITLY (P16 makes a relative --env-file safe): forge's
+# default only passes it *when the file exists*, so on a box that still has a plain app/.env it would
+# silently fall back to Compose's default (app/.env) — reading stale secrets. Passing it explicitly
+# makes a missing app/.env.prod a LOUD error. The verify gate mirrors the C14 smoke contract: the two
+# protected APIs 401, the cron path 403, `/` 302→/auth/login, /api/health is C6-shaped, the three auth
+# methods are enabled, and POST /auth/refresh (no cookie) 401s.
 deploy:
 	$(MAKE) up          # ensure the control plane is running (idempotent; pulls control-plane image if missing)
-	# `forge deploy` (>=0.11.1) defaults --compose-file to the canonical stack `forge productionize`
-	# emits, app/compose.prod.yaml (P7.2), and (>=0.15.1) defaults --env-file to app/.env.prod (P10).
-	# We pass `--env-file app/.env.prod` EXPLICITLY: forge's default only passes it *when the file
-	# exists*, so on a box that still has a plain app/.env (pre-0.15.1) it would silently fall back to
-	# Compose's default (app/.env) — reading stale secrets and IGNORING app/.env.prod edits (the trap
-	# that hid SMTP). Passing it explicitly makes a missing app/.env.prod a LOUD error, not a silent
-	# fallback. One prod secrets file, unambiguously: app/.env.prod. (Migrate a plain app/.env with
-	# `cp app/.env app/.env.prod` — see DEPLOY.md.)
-	./forge deploy --app forge-os --proxy-net proxy --env-file app/.env.prod
+	./forge release --app forge-os --host forge-os.mardash.ai \
+	  --env-file app/.env.prod \
+	  --health-path /api/health \
+	  --api-path /api/goals --api-path /api/today \
+	  --cron-path /api/cron/habits-finalize \
+	  --page-path / \
+	  --expect google,email,password-signup --check-refresh
 	@$(PROD) ps
 	@echo ""
-	@echo "Deployed forge-os (zero-downtime roll via forge deploy).  Public:  https://forge-os.mardash.ai/api/health"
+	@echo "Released forge-os (assess→publish→repin→deploy→verify via forge release).  Public:  https://forge-os.mardash.ai/api/health"
 	@echo "On the box:  make deploy-ps  /  make deploy-logs"
+
+# `make release` is an alias for `make deploy` — the one-command pipeline is a "release" now.
+release: deploy
 
 deploy-ps:
 	$(PROD) ps

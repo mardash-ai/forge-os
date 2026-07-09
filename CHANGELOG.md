@@ -7,6 +7,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.13.0] — 2026-07-09
+
+### Changed
+
+- **Adopt forge `0.23.0` — deploy through ONE command, `forge release` (C18).** Bump the control-plane
+  pin (`FORGE_IMAGE` in `compose.yaml`) → `forge-control-plane:0.23.0@sha256:24a11ef0…`, multi-arch
+  (amd64+arm64), digest-pinned (R1), and rewrite `make deploy` (plus a `make release` alias) from the
+  by-hand `forge deploy` call into a thin `forge release --app forge-os --host forge-os.mardash.ai
+  --env-file app/.env.prod --health-path /api/health --api-path /api/goals --api-path /api/today
+  --cron-path /api/cron/habits-finalize --page-path / --expect google,email,password-signup
+  --check-refresh`. That single command runs the whole deploy as five ordered, **atomic + idempotent +
+  fail-safe** phases — **assess** (resolve HEAD, compute the `…/forge-os-app:sha-<commit>` ref, read the
+  current pin + host) → **publish** (poll GHCR until `publish-app.yml`'s build for the commit resolves a
+  digest) → **repin** (`forge productionize` onto that digest, data-plane pin kept) → **deploy** (the C7
+  start-first roll + P14 drift gate + P16 `tsx --` wrapper + P17 fail-loud secret) → **verify** (the C14
+  post-deploy contract smoke against the host) — retiring the ~10-step by-hand
+  publish→wait→resolve→repin→deploy→verify flow. Any phase that throws stops before the next (never
+  half-applied), a failed roll keeps the last-good replica serving, a red verify fails the release, a
+  dirty tree is refused before any mutation, and a re-run **resumes** from the first unsatisfied phase (a
+  landed re-run is a no-op); `--dry-run` previews the plan mutating nothing. The verify gate mirrors the
+  C14 smoke contract (`/api/goals` + `/api/today` → 401, `/api/cron/habits-finalize` → 403, `/` →
+  302 `/auth/login`, `/api/health` C6-shaped, the three auth methods enabled, `POST /auth/refresh` with
+  no cookie → 401).
+- **Keep the data-plane pin unchanged (`forge-data-plane:0.22.0@sha256:9de9a8a0…`).** C18 is a
+  **control-plane** CLI, so this adoption rolls only the control plane; the data-plane sidecar and its
+  durable `forge_state`/`postgres_data` volumes are untouched (no session-store churn, no user logout).
+  The `./forge` wrapper stays on the P16 `tsx -- …` form so option flags reach the CLI.
+- **Keep `PROJECT_IDEA.md` current — deploys are one command now.** Record the platform runtime at
+  `0.23.0` and that `make deploy` is a thin `forge release` call (the manual multi-step deploy flow is
+  retired; deploys are atomic + fail-safe + idempotent + resumable).
+
 ## [0.12.2] — 2026-07-09
 
 ### Fixed
@@ -673,7 +704,8 @@ _This changelog started mid-project: the Goals & Tasks core and the Timeline →
 Reminders → Planner Agent → Habits features predate it; see `PROJECT_IDEA.md`'s roadmap and the git
 history for that record._
 
-[Unreleased]: https://github.com/mardash-ai/forge-os/compare/v0.12.2...HEAD
+[Unreleased]: https://github.com/mardash-ai/forge-os/compare/v0.13.0...HEAD
+[0.13.0]: https://github.com/mardash-ai/forge-os/compare/v0.12.2...v0.13.0
 [0.12.2]: https://github.com/mardash-ai/forge-os/compare/v0.12.1...v0.12.2
 [0.12.1]: https://github.com/mardash-ai/forge-os/compare/v0.12.0...v0.12.1
 [0.12.0]: https://github.com/mardash-ai/forge-os/compare/v0.11.0...v0.12.0

@@ -12,7 +12,7 @@
 # dependencies.
 services:
   api:
-    image: ${FORGE_IMAGE:-ghcr.io/mardash-ai/forge-control-plane:0.22.0@sha256:e790de7d75266100ddf9210afbd44fd37139be5489274a360db63a7b7d688858}
+    image: ${FORGE_IMAGE:-ghcr.io/mardash-ai/forge-control-plane:0.23.0@sha256:24a11ef0765f9aee4874056fdceaa7b494d071d24341c0bb514b299a6101c565}
     # Use a locally-present image if the registry copy isn't pulled yet.
     pull_policy: missing
     ports:

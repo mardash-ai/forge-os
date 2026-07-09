@@ -81,20 +81,28 @@ Finance Assistant ⬜ · Travel Planner ⬜.
 
 ## 3. Implementation status — where we actually are
 
-**Current app version: `0.12.2`** (SemVer in `app/package.json` / [CHANGELOG.md](CHANGELOG.md)). Six
+**Current app version: `0.13.0`** (SemVer in `app/package.json` / [CHANGELOG.md](CHANGELOG.md)). Six
 pages, fifteen API routes, Postgres-persisted, Next.js App Router + TypeScript + Vitest (plus a
 read-only **prod smoke suite**, run separately — see below). The primary **site nav is responsive**
 (`0.12.2`): below the 768px tablet breakpoint the full row of options collapses into a tap-to-open
 **"Menu"** button (a `<button>` with `aria-expanded`, Escape/outside-click to close), so on phones
-nothing runs past the right edge and the page never scrolls sideways; tablet-and-up is unchanged. Runs on the Forge platform at **`0.22.0`**
-(control + data-plane, digest-pinned). `0.19.0` hardened the deploy path (a **drift gate** that fails
-loudly on a stale/absent image, plus force-recreate onto the pinned digest — the deploy self-verifies)
-and simplified the C16 theme (below); **`0.22.0`** makes the prod stack **fail loud on a missing/empty
-`AUTH_SESSION_SECRET`** (`${AUTH_SESSION_SECRET:?…}` on `web` + `data-plane`) so a deploy can no longer
-silently rotate the session-signing key and log everyone out (the **P17** logout-on-deploy fix), ships
-`forge verify` (a post-deploy contract smoke — the platform form of C14), and turns on the **C15 uptime
-sampler** (`FORGE_STATUS_SAMPLE=1`) so `/status.json` carries a rolling `uptime` section. The `./forge`
-wrapper also now forwards `--`-style flags to the CLI (the **P16** `make deploy` fix).
+nothing runs past the right edge and the page never scrolls sideways; tablet-and-up is unchanged. Runs on the Forge platform at **`0.23.0`**
+(control + data-plane, digest-pinned). **Deploys are now ONE command — `forge release` (C18, adopted
+`0.13.0`, forge `0.23.0`).** `make deploy` is a thin call to `forge release --app forge-os --host
+forge-os.mardash.ai …` that runs the whole pipeline as five ordered, **atomic + idempotent + fail-safe**
+phases — **assess → publish → repin → deploy → verify** — retiring the ~10-step by-hand
+publish→wait→resolve→repin→deploy→verify flow. Any phase that throws stops before the next (never
+half-applied), a failed roll keeps the last-good replica serving, a red verify fails the release, a
+dirty tree is refused before any mutation, and a re-run **resumes** from the first unsatisfied phase (a
+landed re-run is a no-op); `--dry-run` previews the plan mutating nothing. Underneath: `0.19.0` hardened
+the deploy path (a **drift gate** that fails loudly on a stale/absent image, plus force-recreate onto the
+pinned digest — the deploy self-verifies) and simplified the C16 theme (below); **`0.22.0`** makes the
+prod stack **fail loud on a missing/empty `AUTH_SESSION_SECRET`** (`${AUTH_SESSION_SECRET:?…}` on `web` +
+`data-plane`) so a deploy can no longer silently rotate the session-signing key and log everyone out (the
+**P17** logout-on-deploy fix), ships `forge verify` (a post-deploy contract smoke — the platform form of
+C14, now the release's final gate), and turns on the **C15 uptime sampler** (`FORGE_STATUS_SAMPLE=1`) so
+`/status.json` carries a rolling `uptime` section. The `./forge` wrapper also now forwards `--`-style
+flags to the CLI (the **P16** `make deploy` fix).
 
 > **🎨 Branded, and it ships a public status page.** The platform-served surfaces now wear forge-os's own
 > look, not a neutral default — a root `forge.theme.json` (derived from the app's committed dark
