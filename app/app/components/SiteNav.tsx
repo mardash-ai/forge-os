@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { syncNotifications } from '@/lib/notification-inbox';
 import { getSession } from '@/lib/auth';
+import { NavMenu } from './NavMenu';
 
 type Page = 'floor' | 'today' | 'habits' | 'log' | 'alerts';
 
@@ -9,6 +10,10 @@ type Page = 'floor' | 'today' | 'habits' | 'log' | 'alerts';
 // notifications store (C4) and shows the live non-dismissed count in the badge.
 // The account tail links to the platform's HOSTED auth (C10) — sign in/out live
 // there; we render no auth UI of our own.
+//
+// The links render inline on desktop; below the mobile breakpoint NavMenu (a thin
+// client wrapper) collapses this row behind a tap-to-open "Menu" button so the nav
+// never overflows the viewport.
 export async function SiteNav({ current }: { current: Page }) {
   // The badge count is the caller's OWN live inbox (C11), so resolve the session first
   // and reconcile scoped to their owner id. (SiteNav only renders on gated pages, so a
@@ -16,7 +21,7 @@ export async function SiteNav({ current }: { current: Page }) {
   const session = await getSession();
   const count = session ? (await syncNotifications(session.userId, new Date())).length : 0;
   return (
-    <nav className="site-nav" aria-label="Primary">
+    <NavMenu>
       <Link href="/" className={current === 'floor' ? 'on' : ''} aria-current={current === 'floor' ? 'page' : undefined}>
         Floor
       </Link>
@@ -58,6 +63,6 @@ export async function SiteNav({ current }: { current: Page }) {
       ) : (
         <a href="/auth/login">Sign in</a>
       )}
-    </nav>
+    </NavMenu>
   );
 }

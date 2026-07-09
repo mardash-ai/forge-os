@@ -81,9 +81,12 @@ Finance Assistant ⬜ · Travel Planner ⬜.
 
 ## 3. Implementation status — where we actually are
 
-**Current app version: `0.12.0`** (SemVer in `app/package.json` / [CHANGELOG.md](CHANGELOG.md)). Six
+**Current app version: `0.12.2`** (SemVer in `app/package.json` / [CHANGELOG.md](CHANGELOG.md)). Six
 pages, fifteen API routes, Postgres-persisted, Next.js App Router + TypeScript + Vitest (plus a
-read-only **prod smoke suite**, run separately — see below). Runs on the Forge platform at **`0.22.0`**
+read-only **prod smoke suite**, run separately — see below). The primary **site nav is responsive**
+(`0.12.2`): below the 768px tablet breakpoint the full row of options collapses into a tap-to-open
+**"Menu"** button (a `<button>` with `aria-expanded`, Escape/outside-click to close), so on phones
+nothing runs past the right edge and the page never scrolls sideways; tablet-and-up is unchanged. Runs on the Forge platform at **`0.22.0`**
 (control + data-plane, digest-pinned). `0.19.0` hardened the deploy path (a **drift gate** that fails
 loudly on a stale/absent image, plus force-recreate onto the pinned digest — the deploy self-verifies)
 and simplified the C16 theme (below); **`0.22.0`** makes the prod stack **fail loud on a missing/empty

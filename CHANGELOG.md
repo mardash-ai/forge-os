@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.12.2] — 2026-07-09
+
+### Fixed
+
+- **Responsive site nav — collapse to a tap-to-open menu on mobile.** The primary nav
+  (`SiteNav`) rendered its full inline row (`Floor · Today · Habits · Log · Alerts` + the alert
+  badge + the account tail) at every width, so on phones it ran past the right edge and the page
+  scrolled sideways. Below the **768px** tablet breakpoint the row now collapses behind a single
+  **"Menu"** toggle that reveals the same links as a bounded dropdown; tablet-and-up is unchanged.
+  The links are wrapped in a thin client component (`NavMenu`) so `SiteNav` stays an async server
+  component, and the dropdown is width-capped (`max-width: calc(100vw - 32px)`) so **nothing
+  overflows the viewport at any width** (verified 320→1280px: no horizontal scroll; the inline row
+  is intrinsically ~620px wide, which is why the breakpoint sits at 768px rather than a smaller one).
+- **Keep the mobile nav accessible.** The toggle is a real `<button>` with an accessible label
+  (`aria-label` "Open menu"/"Close menu"), `aria-expanded`, and `aria-controls` pointing at the
+  dropdown; it is keyboard-operable and closes on a second press, on choosing a link, on `Escape`,
+  or on a pointer press outside the nav.
+
 ## [0.12.1] — 2026-07-09
 
 ### Changed
@@ -655,7 +673,8 @@ _This changelog started mid-project: the Goals & Tasks core and the Timeline →
 Reminders → Planner Agent → Habits features predate it; see `PROJECT_IDEA.md`'s roadmap and the git
 history for that record._
 
-[Unreleased]: https://github.com/mardash-ai/forge-os/compare/v0.12.1...HEAD
+[Unreleased]: https://github.com/mardash-ai/forge-os/compare/v0.12.2...HEAD
+[0.12.2]: https://github.com/mardash-ai/forge-os/compare/v0.12.1...v0.12.2
 [0.12.1]: https://github.com/mardash-ai/forge-os/compare/v0.12.0...v0.12.1
 [0.12.0]: https://github.com/mardash-ai/forge-os/compare/v0.11.0...v0.12.0
 [0.11.0]: https://github.com/mardash-ai/forge-os/compare/v0.10.1...v0.11.0

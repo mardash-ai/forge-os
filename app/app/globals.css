@@ -606,12 +606,53 @@ a {
 .site-nav {
   margin-left: auto;
   display: flex;
-  gap: 6px;
   align-items: center;
   font-family: var(--mono);
   font-size: 12px;
   letter-spacing: 0.1em;
   text-transform: uppercase;
+}
+/* The inline row of links. On desktop this is the whole nav; below the mobile
+   breakpoint it becomes the dropdown revealed by the Menu toggle. */
+.nav-items {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+/* The Menu toggle is mobile-only — the full row shows inline on desktop. */
+.nav-toggle {
+  display: none;
+  align-items: center;
+  gap: 8px;
+  background: transparent;
+  color: var(--ash);
+  border: 1px solid var(--iron-edge);
+  border-radius: 6px;
+  padding: 6px 10px;
+  font-family: var(--mono);
+  font-size: 12px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+.nav-toggle:hover {
+  color: var(--chalk);
+}
+.nav-toggle:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+.nav-toggle-bars {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.nav-toggle-bars span {
+  display: block;
+  width: 16px;
+  height: 2px;
+  background: currentColor;
+  border-radius: 1px;
 }
 .site-nav a {
   color: var(--ash);
@@ -642,6 +683,57 @@ a {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* The inline nav row is intrinsically ~620px wide (5 links + a badge + the account
+   tail), so it needs a tablet-and-up viewport to sit without running past the right
+   edge. Below 768px, collapse it: show the Menu toggle and hide the links until
+   tapped, then float them as a bounded dropdown that can't push the page wider than
+   the viewport. (768px is the standard tablet breakpoint; the 560px blocks elsewhere
+   in this file tune unrelated components and intentionally keep their own breakpoint.) */
+@media (max-width: 768px) {
+  .site-nav {
+    position: relative;
+  }
+  .nav-toggle {
+    display: inline-flex;
+  }
+  .nav-items {
+    display: none;
+    position: absolute;
+    top: calc(100% + 8px);
+    right: 0;
+    z-index: 30;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 2px;
+    min-width: 168px;
+    max-width: calc(100vw - 32px);
+    padding: 8px;
+    background: var(--forge);
+    border: 1px solid var(--iron-edge);
+    border-radius: 8px;
+    box-shadow: 0 12px 28px rgba(0, 0, 0, 0.45);
+  }
+  .nav-items.open {
+    display: flex;
+  }
+  .nav-items a {
+    display: block;
+    padding: 8px 10px;
+  }
+  /* Inline dot separators are meaningless in a vertical list. */
+  .nav-items .sep {
+    display: none;
+  }
+  .nav-items .nav-user {
+    max-width: 100%;
+    padding: 6px 10px;
+  }
+  .nav-items .nav-badge {
+    align-self: flex-start;
+    margin: 2px 0 2px 10px;
+  }
 }
 
 /* status readout under the floor title */
