@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.15.2] — 2026-07-09
+
+### Fixed
+
+- **`./forge` wrapper — dial the IPv4 literal `127.0.0.1`, not `localhost`, for the in-container
+  control-plane API (P20).** Inside the control-plane container, `getent hosts localhost` resolves to
+  IPv6 `::1` first (base-image drift), but the Forge API binds IPv4-only (`0.0.0.0:3717`); so the
+  wrapper's `-e FORGE_API_URL=http://localhost:3717` (and its `fetch('http://localhost:3717/health')`
+  readiness probe) misdialed `::1` and failed deterministically with `Cannot reach Forge API … fetch
+  failed`, aborting `forge release` before its first phase. Both in-container dials now use
+  `http://127.0.0.1:3717`. This is a **P16-style split fix**: forge `0.26.1` fixes the CLI *code* default,
+  but the wrapper's explicit `FORGE_API_URL` override is the operative one on the box, so it MUST be
+  fixed here too — the image bump alone would not.
+
+### Changed
+
+- **Adopt forge `0.26.1` — control-plane CLI dials `127.0.0.1` (P20 fix).** Bump the control-plane pin
+  (`FORGE_IMAGE` in `compose.yaml`) → `forge-control-plane:0.26.1@sha256:d0874f51…`, multi-arch
+  (amd64+arm64), digest-pinned (R1). Pairs with the `./forge` wrapper fix above so a real `forge release`
+  reaches the control-plane API on the box. The data-plane pin is **unchanged**
+  (`forge-data-plane:0.22.0@sha256:9de9a8a0…`) — control-plane CLI bump only; the batch it ships (mobile
+  nav fix + `make deploy`→`forge release` adoption + A1 Projects + A2 Areas) stays **web-only**, so no
+  data-plane roll and no session churn (no user logout).
+
 ## [0.15.1] — 2026-07-09
 
 ### Changed
@@ -789,7 +813,8 @@ _This changelog started mid-project: the Goals & Tasks core and the Timeline →
 Reminders → Planner Agent → Habits features predate it; see `PROJECT_IDEA.md`'s roadmap and the git
 history for that record._
 
-[Unreleased]: https://github.com/mardash-ai/forge-os/compare/v0.15.1...HEAD
+[Unreleased]: https://github.com/mardash-ai/forge-os/compare/v0.15.2...HEAD
+[0.15.2]: https://github.com/mardash-ai/forge-os/compare/v0.15.1...v0.15.2
 [0.15.1]: https://github.com/mardash-ai/forge-os/compare/v0.15.0...v0.15.1
 [0.15.0]: https://github.com/mardash-ai/forge-os/compare/v0.14.0...v0.15.0
 [0.14.0]: https://github.com/mardash-ai/forge-os/compare/v0.13.0...v0.14.0

@@ -14,13 +14,20 @@ if ! docker compose ps --status=running --services 2>/dev/null | grep -qx api; t
   echo "forge: platform not running — starting it..." >&2
   docker compose up -d >&2
   for _ in $(seq 1 30); do
-    if docker compose exec -T api node -e "fetch('http://localhost:${PORT}/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))" 2>/dev/null; then
+    # Dial the IPv4 literal 127.0.0.1, NOT `localhost` (P20). The control-plane API binds IPv4-only
+    # (0.0.0.0:PORT), but inside the container `localhost` can resolve to IPv6 `::1` first (base-image
+    # drift), so `localhost` misdials `::1` and the probe fails deterministically. 127.0.0.1 is exact.
+    if docker compose exec -T api node -e "fetch('http://127.0.0.1:${PORT}/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))" 2>/dev/null; then
       break
     fi
     sleep 1
   done
 fi
 
+# Point the in-container CLI at the IPv4 literal 127.0.0.1 (P20 — see above): `localhost` inside the
+# container can resolve to `::1` first while the API is IPv4-only, so `FORGE_API_URL=http://localhost:…`
+# makes `fetch()` misdial `::1` ("Cannot reach Forge API"). This explicit override is the operative one
+# on the box, so the image's code-default fix alone is not enough — it MUST be 127.0.0.1 here too.
 exec docker compose exec -T \
-  -e FORGE_API_URL="http://localhost:${PORT}" \
+  -e FORGE_API_URL="http://127.0.0.1:${PORT}" \
   api ./node_modules/.bin/tsx -- src/cli/index.ts "$@"
