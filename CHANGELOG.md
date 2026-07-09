@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.12.1] — 2026-07-09
+
+### Changed
+
+- **Repin the prod `web` image to the CI build of `0.12.0` (footer + forge `0.22.0` adoption).**
+  Re-run `forge productionize` with `--web-image ghcr.io/mardash-ai/forge-os-app@sha256:9427e4da…`
+  (the multi-arch image CI published for the `0.12.0` app-code commit — it carries the site-wide
+  footer) while keeping the data-plane at `forge-data-plane:0.22.0@sha256:9de9a8a0…`. Updates
+  `app/compose.prod.yaml` + `app/forge.app.json` so `forge deploy`'s drift gate lands both tiers on
+  their pins. Re-apply the hand-added C15 uptime sampler env + the P13 `app/.env.prod` migration note
+  that a productionize regeneration drops.
+
 ## [0.12.0] — 2026-07-09
 
 ### Added
@@ -643,7 +655,8 @@ _This changelog started mid-project: the Goals & Tasks core and the Timeline →
 Reminders → Planner Agent → Habits features predate it; see `PROJECT_IDEA.md`'s roadmap and the git
 history for that record._
 
-[Unreleased]: https://github.com/mardash-ai/forge-os/compare/v0.12.0...HEAD
+[Unreleased]: https://github.com/mardash-ai/forge-os/compare/v0.12.1...HEAD
+[0.12.1]: https://github.com/mardash-ai/forge-os/compare/v0.12.0...v0.12.1
 [0.12.0]: https://github.com/mardash-ai/forge-os/compare/v0.11.0...v0.12.0
 [0.11.0]: https://github.com/mardash-ai/forge-os/compare/v0.10.1...v0.11.0
 [0.10.1]: https://github.com/mardash-ai/forge-os/compare/v0.10.0...v0.10.1
