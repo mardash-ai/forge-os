@@ -7,7 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.15.4] — 2026-07-09
+## [0.15.5] — 2026-07-09
+
+### Changed
+
+- **Adopt forge `0.26.3` for the deploy control-plane — fixes the `forge release` timeout that aborted
+  `make deploy`.** Bump `FORGE_IMAGE` (`compose.yaml`) → `forge-control-plane:0.26.3@sha256:e0c27188…`
+  (multi-arch amd64+arm64, digest-pinned). `0.26.2`'s CLI issued the long-running release request through
+  a fetch that inherited undici's default **300s headers-timeout**, so a release that ran past that window
+  aborted mid-flight and surfaced the misleading `Cannot reach Forge API` — even though the API was up and
+  still working. `0.26.3` routes that single call through a **no-timeout dispatcher**, so `forge release`
+  waits out the full pipeline instead of self-aborting. The `./forge` wrapper's unconditional `/health`
+  poll and in-container `127.0.0.1` dial (P20/P22) are unchanged. The data-plane pin is **unchanged**
+  (`forge-data-plane:0.22.0@sha256:9de9a8a0…`); this batch stays web-only — no data-plane roll, no user
+  logout.
 
 ### Changed
 
@@ -860,7 +873,8 @@ _This changelog started mid-project: the Goals & Tasks core and the Timeline →
 Reminders → Planner Agent → Habits features predate it; see `PROJECT_IDEA.md`'s roadmap and the git
 history for that record._
 
-[Unreleased]: https://github.com/mardash-ai/forge-os/compare/v0.15.4...HEAD
+[Unreleased]: https://github.com/mardash-ai/forge-os/compare/v0.15.5...HEAD
+[0.15.5]: https://github.com/mardash-ai/forge-os/compare/v0.15.4...v0.15.5
 [0.15.4]: https://github.com/mardash-ai/forge-os/compare/v0.15.3...v0.15.4
 [0.15.3]: https://github.com/mardash-ai/forge-os/compare/v0.15.2...v0.15.3
 [0.15.2]: https://github.com/mardash-ai/forge-os/compare/v0.15.1...v0.15.2
