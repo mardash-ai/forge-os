@@ -7,6 +7,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.15.4] — 2026-07-09
+
+### Changed
+
+- **Adopt forge `0.26.2` for the deploy control-plane — completes the P20 CLI dial fix and serves on
+  the box.** Bump `FORGE_IMAGE` (`compose.yaml`) → `forge-control-plane:0.26.2@sha256:275fdf68…`
+  (multi-arch amd64+arm64, digest-pinned; the P21 control-plane boot fix, so the API binds + serves —
+  verified in-container `fetch('http://127.0.0.1:3717/health')` → 200). This supersedes the `0.24.1`
+  stopgap: `0.24.1`'s CLI still carried a **residual `localhost`→IPv6 `::1` misdial** (pre-P20) that
+  aborted `forge release` with `Cannot reach Forge API at http://127.0.0.1:3717` even though the
+  same-container probe reached the API; `0.26.2` finishes P20 by routing every CLI call through
+  `resolveApiBaseUrl` (`127.0.0.1`), proven by an IP-literal integration test against an IPv4-only
+  server. The data-plane pin is **unchanged** (`forge-data-plane:0.22.0@sha256:9de9a8a0…`); this batch
+  (mobile nav fix + `forge release` adoption + A1 Projects + A2 Areas) stays web-only — no data-plane
+  roll, no user logout.
+
+### Fixed
+
+- **`./forge` wrapper — always poll `/health` before exec'ing the CLI (P22), killing the `make deploy`
+  cold-start race.** The readiness wait previously ran **only** inside the `if ! docker compose ps … api`
+  block (when the wrapper itself started the container). But `make deploy` runs `make up` (which starts,
+  but does not wait for, the control-plane) and then `./forge release` back-to-back, so on a cold start
+  `docker compose ps` already reported `api` "running" while the `tsx` process had **not yet bound** the
+  API (~2-7s) — the wrapper skipped the wait and exec'd the CLI before the bind, hitting a deterministic
+  `Cannot reach Forge API`. The `/health` poll (IPv4 `127.0.0.1`, bounded ~30×1s) now runs
+  **unconditionally** before the final `exec`, so every invocation tolerates a cold-start bind on any
+  image version. The in-container `-e FORGE_API_URL=http://127.0.0.1:3717` dial (P20) is unchanged.
+
 ## [0.15.3] — 2026-07-09
 
 ### Changed
@@ -832,7 +860,8 @@ _This changelog started mid-project: the Goals & Tasks core and the Timeline →
 Reminders → Planner Agent → Habits features predate it; see `PROJECT_IDEA.md`'s roadmap and the git
 history for that record._
 
-[Unreleased]: https://github.com/mardash-ai/forge-os/compare/v0.15.3...HEAD
+[Unreleased]: https://github.com/mardash-ai/forge-os/compare/v0.15.4...HEAD
+[0.15.4]: https://github.com/mardash-ai/forge-os/compare/v0.15.3...v0.15.4
 [0.15.3]: https://github.com/mardash-ai/forge-os/compare/v0.15.2...v0.15.3
 [0.15.2]: https://github.com/mardash-ai/forge-os/compare/v0.15.1...v0.15.2
 [0.15.1]: https://github.com/mardash-ai/forge-os/compare/v0.15.0...v0.15.1
