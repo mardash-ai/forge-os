@@ -2092,3 +2092,129 @@ a {
 .footer-brand {
   color: var(--ash);
 }
+
+/* ============ global search (C19) ============ */
+.search-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin-top: 24px;
+}
+.search-form .text-input {
+  min-width: 200px;
+}
+.search-select {
+  font-family: var(--body);
+  font-size: 14px;
+  color: var(--chalk);
+  background: var(--forge);
+  border: 1px solid var(--iron-edge);
+  border-radius: 5px;
+  padding: 9px 12px;
+  flex: none;
+}
+.search-select:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+.search-count {
+  font-family: var(--mono);
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  color: var(--ash);
+  margin: 22px 0 0;
+  font-variant-numeric: tabular-nums;
+}
+.search-took {
+  color: #6f665c;
+}
+.search-note {
+  color: var(--ash);
+  font-size: 15px;
+  padding: 22px 2px;
+  border-left: 2px solid var(--iron-edge);
+  padding-left: 14px;
+  margin: 18px 0 0;
+}
+.results {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 12px;
+  list-style: none;
+  padding: 0;
+}
+.result {
+  background: var(--iron);
+  border: 1px solid var(--iron-edge);
+  border-radius: 6px;
+  transition: transform 0.15s ease, border-color 0.15s ease;
+}
+.result:hover {
+  transform: translateY(-1px);
+  border-color: #4a3f35;
+}
+.result-link {
+  display: block;
+  padding: 14px 18px;
+  text-decoration: none;
+  color: inherit;
+}
+.result-link:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+.result-top {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  margin-bottom: 6px;
+}
+.result-type {
+  flex: none;
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--t3);
+  border: 1px solid var(--iron-edge);
+  border-radius: 3px;
+  padding: 2px 6px;
+}
+.result-title {
+  font-family: var(--display);
+  font-weight: 700;
+  font-size: 18px;
+  letter-spacing: -0.01em;
+  margin: 0;
+  line-height: 1.2;
+}
+.result-snippet {
+  color: var(--ash);
+  font-size: 14px;
+  margin: 0;
+  line-height: 1.5;
+}
+.result-snippet mark {
+  background: rgba(233, 169, 60, 0.22);
+  color: var(--chalk);
+  border-radius: 2px;
+  padding: 0 2px;
+}
+.reindex {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.reindex-note {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  color: var(--ash);
+}
+.reindex-note.error {
+  color: var(--warn);
+}

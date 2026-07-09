@@ -73,8 +73,9 @@ calendar/auto-scheduling) · Generate 🟡 (only task proposals) · Prioritize �
 only) · Review 🟡 (human accept/reject of proposals) · Organize 🟡 (goal lifecycle **+ Projects**
 (group related Goals and roll up their heat, `0.14.0`) **+ Areas** (tag Goals/Habits/Projects to a
 life domain and filter by it, `0.15.0`); no sub-goals yet) · Research ⬜ · Write ⬜ ·
-Summarize ⬜ · **Search ⬜** (nothing is searchable yet — the single most conspicuous gap; Projects
-and Areas begin to make it necessary).
+Summarize ⬜ · **Search ✅** (**Global Search** across Goals, Tasks, Projects, Areas & Habits — one
+box, ranked typed results with `<mark>` snippets, owner-scoped; built on the platform's **C19**
+full-text index, `0.17.0`).
 
 **Agents** — Planner ✅. Researcher ⬜ · Writer ⬜ · Scheduler ⬜ (note: a C2 *background job*
 finalizes streaks, but there is no AI Scheduler agent) · Meeting Assistant ⬜ · Career Coach ⬜ ·
@@ -84,10 +85,13 @@ Finance Assistant ⬜ · Travel Planner ⬜.
 
 ## 3. Implementation status — where we actually are
 
-**Current app version: `0.16.0`** (SemVer in `app/package.json` / [CHANGELOG.md](CHANGELOG.md)). Nine
-pages, twenty-one API routes, Postgres-persisted, Next.js App Router + TypeScript + Vitest (plus a
-read-only **prod smoke suite**, run separately — see below). The newest surface is **Areas**
-(`/areas`, `0.15.0`) — user-defined life domains you tag Goals, Habits & Projects to (≤1 each) and
+**Current app version: `0.17.0`** (SemVer in `app/package.json` / [CHANGELOG.md](CHANGELOG.md)). Ten
+pages, twenty-two API routes, Postgres-persisted, Next.js App Router + TypeScript + Vitest (plus a
+read-only **prod smoke suite**, run separately — see below). The newest surface is **Global Search**
+(`/search`, `0.17.0`, **B5**) — one box across Goals, Tasks, Projects, Areas & Habits, backed by the
+platform's **C19** owner-scoped full-text index: rows are indexed on mutation, a "reindex my data"
+action backfills pre-existing rows, and results are ranked, typed, and `<mark>`-highlighted. Before it,
+**Areas** (`/areas`, `0.15.0`) — user-defined life domains you tag Goals, Habits & Projects to (≤1 each) and
 then **filter every list view** by; deleting an Area keeps the tagged resources (the FK is nulled).
 It builds directly on **Projects** (`/projects` + a project detail view, `0.14.0`) — group related
 Goals and see their combined heat. The primary **site nav is responsive**
@@ -101,8 +105,11 @@ operator-declared **status incidents** now render on the public `/status` (+ `/s
 code** — the existing proxy just gains an incidents section, byte-identical when none exist (**C15 · P3**);
 generic **owner-scoped full-text search** (`POST /search` + `/index`·`/index/delete`·`/reindex`, **C19**); and
 **owner-scoped blob storage** (`POST /blobs` · `GET/DELETE /blobs/:id`, **C20**). The search + blob **endpoints
-are live server-side now** (reached via `FORGE_EVENTS_URL`); the app-consumer features that build on them — a
-**search UI** (Epic B/L) and **Notes attachments** (Epic B) — follow in later passes. The `./forge`
+are live server-side now** (reached via `FORGE_EVENTS_URL`). The first C19 consumer has now shipped: **B5 ·
+Global Search** (`0.17.0`) indexes every Goal/Task/Project/Area/Habit on mutation, backfills existing rows via a
+"reindex my data" action, and adds a `/search` UI (ranked, typed, `<mark>`-highlighted results that link back
+to each resource). The other consumer feature that builds on the platform — **Notes attachments** (Epic B, C20)
+— follows in a later pass. The `./forge`
 wrapper dials the in-container API on the IPv4 literal `127.0.0.1` so it never misdials IPv6 `::1` (**P20**), and
 it now **always polls `/health` before exec'ing the CLI** so a cold-start container bind can't race the `make up`
 → `forge release` handoff (**P22**). The deploy control-plane moved off the `0.24.1` stopgap to `0.26.2`, which
@@ -345,14 +352,15 @@ not just a place you track.
   *Pressures Forge →* a **graph/index** over resources (the on-ramp to Search). · *Borrow from:*
   Reflect, Tana, Roam. · *Spec seed:* `links(from_type, from_id, to_type, to_id)`; AC: bidirectional
   display; `[[title]]` autolink in note bodies is a nice-to-have. · *Size M · ◐*
-- **B5 · Global Search** — one search box across Goals, Tasks, Notes, Habits, Timeline. · *User can:*
-  find anything by keyword; jump to it. · *Introduces:* the **Search** capability. · *Pressures Forge
-  →* **Search / indexing** (full-text first; then **embeddings / semantic search** as a follow-on) —
-  *the single clearest missing platform capability.* · *Borrow from:* everyone; Reflect's "query your
-  whole library" is the north star. · *Spec seed:* start with Postgres full-text (`tsvector`) behind
-  a `lib/search.ts`; the wind-tunnel move is to file the search/indexing capability so it becomes a
-  Forge primitive rather than app-local SQL. AC: `/search?q=` returns typed, ranked results across ≥3
-  resource types. · *Size M · ●*
+- **B5 · Global Search ✅ (`0.17.0`)** — one search box across Goals, Tasks, Projects, Areas & Habits. ·
+  *User can:* find anything by keyword; jump straight to it. · *Introduced:* the **Search** capability,
+  consumed from the platform's **C19** owner-scoped full-text index (no app-local SQL — the wind-tunnel move
+  paid off: search is a Forge primitive). · *Shipped:* a best-effort `lib/forge-search.ts` client (mirrors the
+  C3 events / C4 notifications clients); **index-on-mutation** at the same db.ts points that emit C3 events;
+  a **/reindex backfill** ("reindex my data") for pre-existing rows; and a server-rendered `/search` UI with
+  ranked, typed results and XSS-safe `<mark>` snippets that link back to each resource, gated behind
+  `requireOwner()`. **Embeddings / semantic search** remains a possible follow-on. · AC met: `/search?q=`
+  returns typed, ranked results across five resource types, owner-scoped. · *Size M · ●*
 
 ### Epic C · Journal & Reflection — *forces scheduled prompts + a Summarize agent*
 
@@ -573,8 +581,10 @@ isolated (verified live with two users). Together they were a high-value wind-tu
 (Sharing/collaboration — **M3** — stays deferred until multi-user collaboration is genuinely needed.)
 
 **▶ Recommended next feature set — "Knowledge & Search" (Epics A + B).** Ship **A1 Projects ✅ (`0.14.0`) →
-A2 Areas ✅ (`0.15.0`) → B1 Notes → B2 Quick Capture → B5 Global Search.** (A1 + A2 shipped app-local —
-Gate 0 ruled each pure domain, no new platform capability; **B1 Notes is next**.) Why this set:
+A2 Areas ✅ (`0.15.0`) → B5 Global Search ✅ (`0.17.0`) → B1 Notes → B2 Quick Capture.** (A1 + A2 shipped
+app-local — Gate 0 ruled each pure domain, no new platform capability. B5 shipped as the first **C19** consumer —
+search is now a platform primitive, not app-local SQL; **B1 Notes is next**, and pulls in **C20** blob storage.)
+Why this set:
 - *Genuinely useful:* turns forge-os from a goal tracker into a real life OS / second brain — the
   category every competitor occupies and the one the domain model most obviously implies.
 - *Clean platform pressure:* it forces the **two most conspicuous missing Forge capabilities at once

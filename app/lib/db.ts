@@ -14,6 +14,7 @@ import type {
 import { rollupFromCounts, rollupProgress } from './projects';
 import type { Area, AreaOption, AreaWithCounts, TaggableKind } from './areas';
 import { emitAppEvent, latestActivityBySubject } from './forge-events';
+import { deleteDoc, indexDoc, type IndexDoc } from './forge-search';
 import { bucketFor } from './schedule';
 import { computeStreak, dateOf, finalizeStreak, periodStart, type Cadence, type StreakInfo } from './habits';
 import {
@@ -186,6 +187,78 @@ export async function pingDb(): Promise<void> {
   await getPool().query('SELECT 1');
 }
 
+/**
+ * Fire a best-effort search-index write (capability C19) alongside a domain mutation. Like
+ * the C3 emit, indexing must NEVER break — or fail — the mutation that triggered it: the
+ * forge-search client already swallows network errors, and this guard also absorbs an
+ * unexpected throw, so a search-index hiccup can't turn a real write into a 500.
+ */
+function indexBestEffort(p: Promise<void>): Promise<void> {
+  return p.then(
+    () => undefined,
+    () => undefined,
+  );
+}
+
+// ---- C19 search-index document builders (one per indexed domain kind) --------------------
+// Shape each domain object into the platform's index document. `title` is the primary match
+// field; `body` carries the longer text (goal/project descriptions); `attrs` carry the ids the
+// hit needs to link back (a task's goalId) plus light metadata. owner = the C10 session userId,
+// so the platform scopes every write and read to the caller (C11). Function declarations so the
+// mutations above can call them regardless of source order.
+function goalDoc(owner: string, goal: Goal): IndexDoc {
+  return {
+    owner,
+    type: 'goal',
+    id: goal.id,
+    title: goal.title,
+    body: goal.description,
+    attrs: { status: goal.status, projectId: goal.projectId, areaId: goal.areaId },
+    created_at: goal.createdAt,
+  };
+}
+function taskDoc(owner: string, task: Task): IndexDoc {
+  return {
+    owner,
+    type: 'task',
+    id: task.id,
+    title: task.title,
+    attrs: { goalId: task.goalId, done: task.done },
+    created_at: task.createdAt,
+  };
+}
+function projectDoc(owner: string, project: Project): IndexDoc {
+  return {
+    owner,
+    type: 'project',
+    id: project.id,
+    title: project.title,
+    body: project.description,
+    attrs: { status: project.status, areaId: project.areaId },
+    created_at: project.createdAt,
+  };
+}
+function areaDoc(owner: string, area: Area): IndexDoc {
+  return {
+    owner,
+    type: 'area',
+    id: area.id,
+    title: area.name,
+    attrs: { color: area.color },
+    created_at: area.createdAt,
+  };
+}
+function habitDoc(owner: string, habit: Habit): IndexDoc {
+  return {
+    owner,
+    type: 'habit',
+    id: habit.id,
+    title: habit.title,
+    attrs: { cadence: habit.cadence, areaId: habit.areaId },
+    created_at: habit.createdAt,
+  };
+}
+
 interface GoalRow {
   id: string;
   title: string;
@@ -271,6 +344,8 @@ export async function createGoal(owner: string, title: string, description: stri
   );
   const goal = mapGoal(rows[0]);
   await emitAppEvent({ owner, type: 'goal.created', subject: goal.id, data: { goalTitle: goal.title } });
+  // C19 · make the new goal searchable (title + description). Best-effort: never blocks the write.
+  await indexBestEffort(indexDoc(goalDoc(owner, goal)));
   return { ...goal, total: 0, done: 0, progress: 0 };
 }
 
@@ -354,6 +429,8 @@ export async function addTask(owner: string, goalId: string, title: string): Pro
     subject: goalId,
     data: { taskTitle: task.title, goalTitle: goal[0].title, taskId: task.id },
   });
+  // C19 · make the new task searchable (title; attrs.goalId links the hit to its goal page).
+  await indexBestEffort(indexDoc(taskDoc(owner, task)));
   return task;
 }
 
@@ -495,6 +572,8 @@ export async function createProject(owner: string, title: string, description: s
   );
   const project = mapProject(rows[0]);
   await emitAppEvent({ owner, type: 'project.created', subject: project.id, data: { projectTitle: project.title } });
+  // C19 · make the new project searchable (title + description). Best-effort.
+  await indexBestEffort(indexDoc(projectDoc(owner, project)));
   return { ...project, goalCount: 0, totalTasks: 0, doneTasks: 0, progress: 0 };
 }
 
@@ -562,7 +641,11 @@ export async function updateProject(
      WHERE id = $1 AND owner_id = $4 RETURNING ${PROJECT_COLS}`,
     [id, fields.title, fields.description ?? null, owner],
   );
-  return rows.length ? mapProject(rows[0]) : null;
+  if (rows.length === 0) return null;
+  const project = mapProject(rows[0]);
+  // C19 · the searchable text (title/description) just changed — re-index (idempotent upsert).
+  await indexBestEffort(indexDoc(projectDoc(owner, project)));
+  return project;
 }
 
 /**
@@ -711,6 +794,8 @@ export async function createArea(owner: string, name: string, color: string): Pr
   );
   const area = mapArea(rows[0]);
   await emitAppEvent({ owner, type: 'area.created', subject: area.id, data: { areaName: area.name } });
+  // C19 · make the new area searchable (indexed by its name → the doc title). Best-effort.
+  await indexBestEffort(indexDoc(areaDoc(owner, area)));
   return { ...area, goalCount: 0, habitCount: 0, projectCount: 0 };
 }
 
@@ -737,7 +822,11 @@ export async function updateArea(
      WHERE id = $1 AND owner_id = $4 RETURNING ${AREA_COLS}`,
     [id, fields.name, fields.color ?? null, owner],
   );
-  return rows.length ? mapArea(rows[0]) : null;
+  if (rows.length === 0) return null;
+  const area = mapArea(rows[0]);
+  // C19 · the searchable text (the area name) may have changed — re-index (idempotent upsert).
+  await indexBestEffort(indexDoc(areaDoc(owner, area)));
+  return area;
 }
 
 /**
@@ -751,7 +840,10 @@ export async function deleteArea(owner: string, id: string): Promise<boolean> {
     `DELETE FROM areas WHERE id = $1 AND owner_id = $2 RETURNING id`,
     [id, owner],
   );
-  return rows.length > 0;
+  if (rows.length === 0) return false;
+  // C19 · the area is gone — drop it from the index so it stops surfacing in search. Best-effort.
+  await indexBestEffort(deleteDoc({ owner, type: 'area', id }));
+  return true;
 }
 
 /** The name of the owner's area, or null if it isn't theirs — the guard that stops tagging a
@@ -932,7 +1024,10 @@ export async function createHabit(owner: string, title: string, cadence: Cadence
     `INSERT INTO habits (owner_id, title, cadence) VALUES ($1, $2, $3) RETURNING id, title, cadence, area_id, created_at`,
     [owner, title, cadence],
   );
-  return mapHabit(rows[0]);
+  const habit = mapHabit(rows[0]);
+  // C19 · make the new habit searchable (title). Best-effort.
+  await indexBestEffort(indexDoc(habitDoc(owner, habit)));
+  return habit;
 }
 
 /** The owner's habits, oldest first, each with its streak derived from check-ins as of `now`.
@@ -1020,7 +1115,10 @@ export async function deleteHabit(owner: string, id: string): Promise<boolean> {
     `DELETE FROM habits WHERE id = $1 AND owner_id = $2 RETURNING id`,
     [id, owner],
   );
-  return rows.length > 0;
+  if (rows.length === 0) return false;
+  // C19 · the habit is gone — drop it from the index so it stops surfacing in search. Best-effort.
+  await indexBestEffort(deleteDoc({ owner, type: 'habit', id }));
+  return true;
 }
 
 /** A streak break recorded at a period boundary by the finalize job. */
@@ -1080,4 +1178,26 @@ export async function finalizeHabitStreaks(now: Date): Promise<StreakBreak[]> {
     }
   }
   return recorded;
+}
+
+// ---- C19 backfill — collect the owner's existing rows as index documents ----------------
+// Powers the "reindex my data" action: gather EVERY one of the caller's goals, tasks, projects,
+// areas, and habits (owner-scoped — a cross-owner row is simply absent) and shape them into
+// index documents, so rows that predate live indexing become searchable too. Read-only; the
+// route hands the result to reindexDocs() (capability C19) for a bulk upsert.
+export async function collectSearchDocs(owner: string): Promise<IndexDoc[]> {
+  const [goals, tasks, projects, areas, habits] = await Promise.all([
+    query<GoalRow>(`SELECT ${GOAL_COLS} FROM goals WHERE owner_id = $1`, [owner]),
+    query<TaskRow>(`SELECT ${TASK_COLS} FROM tasks WHERE owner_id = $1`, [owner]),
+    query<ProjectRow>(`SELECT ${PROJECT_COLS} FROM projects WHERE owner_id = $1`, [owner]),
+    query<AreaRow>(`SELECT ${AREA_COLS} FROM areas WHERE owner_id = $1`, [owner]),
+    query<HabitRow>(`SELECT id, title, cadence, area_id, created_at FROM habits WHERE owner_id = $1`, [owner]),
+  ]);
+  return [
+    ...goals.map((r) => goalDoc(owner, mapGoal(r))),
+    ...tasks.map((r) => taskDoc(owner, mapTask(r))),
+    ...projects.map((r) => projectDoc(owner, mapProject(r))),
+    ...areas.map((r) => areaDoc(owner, mapArea(r))),
+    ...habits.map((r) => habitDoc(owner, mapHabit(r))),
+  ];
 }

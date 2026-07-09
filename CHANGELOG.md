@@ -7,6 +7,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.17.0] — 2026-07-09
+
+### Added
+
+- **B5 · Global Search — the first C19 consumer.** One search box across Goals, Tasks, Projects, Areas
+  & Habits, backed by the platform's owner-scoped full-text index (**C19**) — no app-local search SQL.
+  - **Search-index client (`lib/forge-search.ts`).** A best-effort client mirroring the C3 events / C4
+    notifications clients (same `FORGE_EVENTS_URL` base, same `app`-only-when-`FORGE_APP_NAME` rule,
+    2s timeout). Writes (`indexDoc` → `POST /index`, `deleteDoc` → `POST /index/delete`, `reindexDocs`
+    → `POST /reindex`) are best-effort and **never break the triggering mutation**; `search`
+    (`POST /search`) is user-invoked and **degrades to an empty, `degraded`-flagged result** on any
+    failure rather than 500ing. Owner-scoped: every call carries the C10 session `userId` (C11).
+  - **Index-on-mutation.** At the same `lib/db.ts` points that emit C3 app-events, the app now upserts
+    the search index — Goals (title + description), Tasks (title; `attrs.goalId`), Projects
+    (title + description), Areas (name), Habits (title) — on create, re-indexes on edit
+    (`updateProject`, `updateArea`), and removes on hard delete (`deleteArea`, `deleteHabit`).
+  - **Backfill.** `POST /api/search/reindex` + a "reindex my data" action collect the caller's existing
+    rows (`collectSearchDocs`, owner-scoped) and bulk-upsert them, so rows created before live indexing
+    become searchable.
+  - **`/search` UI.** A server-rendered page (nav entry, mobile-safe) that runs `POST /search` with the
+    verified session owner and renders **ranked, typed results** with `<mark>` snippets linking back to
+    each resource; handles empty-query, loading, no-results, and the soft "search unavailable" degrade.
+    Gated behind `requireOwner()`. Platform `<mark>` snippets are parsed into React text nodes
+    (`parseSnippet`) so no platform HTML is ever injected (XSS-safe).
+
+### Fixed
+
+- **Deploy hygiene (P24).** `forge release`'s repin phase (`forge productionize`) rewrites the tracked
+  generated files on the box (`app/compose.prod.yaml`, `app/forge.app.json`, `app/PROVISIONING.md`),
+  leaving uncommitted drift that made the next `git pull --ff-only` abort. The deploy script now
+  discards that drift (`git checkout -- …`) before the pull so it always fast-forwards — the release
+  regenerates the files anyway. (Fix is in the gitignored `release/deploy.sh`.)
+
 ## [0.16.0] — 2026-07-09
 
 ### Changed
@@ -918,7 +951,8 @@ _This changelog started mid-project: the Goals & Tasks core and the Timeline →
 Reminders → Planner Agent → Habits features predate it; see `PROJECT_IDEA.md`'s roadmap and the git
 history for that record._
 
-[Unreleased]: https://github.com/mardash-ai/forge-os/compare/v0.16.0...HEAD
+[Unreleased]: https://github.com/mardash-ai/forge-os/compare/v0.17.0...HEAD
+[0.17.0]: https://github.com/mardash-ai/forge-os/compare/v0.16.0...v0.17.0
 [0.16.0]: https://github.com/mardash-ai/forge-os/compare/v0.15.6...v0.16.0
 [0.15.6]: https://github.com/mardash-ai/forge-os/compare/v0.15.5...v0.15.6
 [0.15.5]: https://github.com/mardash-ai/forge-os/compare/v0.15.4...v0.15.5
