@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.15.6] — 2026-07-09
+
+### Changed
+
+- **Adopt forge `0.26.4` for the deploy control-plane — fixes the last deploy blocker, the GHCR
+  image-tag mismatch that stalled `forge release`.** Bump `FORGE_IMAGE` (`compose.yaml`) →
+  `forge-control-plane:0.26.4@sha256:e98cd451…` (multi-arch amd64+arm64, digest-pinned). `0.26.3`
+  polled GHCR for a **full-SHA** image tag (`sha-<full40>`) while the publish workflow only tags the
+  **short SHA** (`sha-<short7>`), so `forge release` waited the full 600s for a tag that never
+  materializes and then failed (P23). `0.26.4` polls the short-SHA tag (and accepts both), so the
+  readiness gate resolves as soon as the image publishes. The `./forge` wrapper's in-container
+  `127.0.0.1` dial and unconditional `/health` poll (P20/P22) are unchanged. The data-plane pin is
+  **unchanged** (`forge-data-plane:0.22.0@sha256:9de9a8a0…`); this batch stays web-only — no
+  data-plane roll, no user logout.
+
 ## [0.15.5] — 2026-07-09
 
 ### Changed
@@ -873,7 +888,8 @@ _This changelog started mid-project: the Goals & Tasks core and the Timeline →
 Reminders → Planner Agent → Habits features predate it; see `PROJECT_IDEA.md`'s roadmap and the git
 history for that record._
 
-[Unreleased]: https://github.com/mardash-ai/forge-os/compare/v0.15.5...HEAD
+[Unreleased]: https://github.com/mardash-ai/forge-os/compare/v0.15.6...HEAD
+[0.15.6]: https://github.com/mardash-ai/forge-os/compare/v0.15.5...v0.15.6
 [0.15.5]: https://github.com/mardash-ai/forge-os/compare/v0.15.4...v0.15.5
 [0.15.4]: https://github.com/mardash-ai/forge-os/compare/v0.15.3...v0.15.4
 [0.15.3]: https://github.com/mardash-ai/forge-os/compare/v0.15.2...v0.15.3

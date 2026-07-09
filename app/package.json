@@ -1,6 +1,6 @@
 {
   "name": "forge-os",
-  "version": "0.15.5",
+  "version": "0.15.6",
   "private": true,
   "scripts": {
     "dev": "next dev -H 0.0.0.0 -p 3000",
