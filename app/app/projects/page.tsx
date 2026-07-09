@@ -1,16 +1,19 @@
 import Link from 'next/link';
 import type { ProjectWithRollup } from '@/lib/projects';
-import { listProjects } from '@/lib/db';
+import { listAreaOptions, listProjects } from '@/lib/db';
 import { requireOwner } from '@/lib/auth';
 import { HeatBar } from '@/app/components/HeatBar';
 import { NewProject } from '@/app/components/NewProject';
 import { SiteNav } from '@/app/components/SiteNav';
+import { AreaChip } from '@/app/components/AreaChip';
+import { AreaFilter } from '@/app/components/AreaFilter';
 
 export const dynamic = 'force-dynamic';
 
-export default async function ProjectsPage() {
+export default async function ProjectsPage({ searchParams }: { searchParams?: { area?: string } }) {
   const owner = await requireOwner();
-  const projects = await listProjects(owner);
+  const areaFilter = searchParams?.area ?? null;
+  const [projects, areas] = await Promise.all([listProjects(owner, areaFilter), listAreaOptions(owner)]);
   const active = projects.filter((p) => p.status === 'active');
   const archived = projects.filter((p) => p.status === 'archived');
 
@@ -32,6 +35,7 @@ export default async function ProjectsPage() {
           </p>
         </div>
         <div className="head-actions">
+          <AreaFilter areas={areas} current={areaFilter} />
           <NewProject />
         </div>
       </div>
@@ -77,6 +81,7 @@ function ProjectCard({
       <Link className="goal-link" href={`/projects/${project.id}`}>
         <div className="goal-top">
           <h2 className="goal-title">{project.title}</h2>
+          {project.areaId && project.areaName ? <AreaChip name={project.areaName} color={project.areaColor} /> : null}
           <span className={`chip ${quiet ? 'archived' : 'active'}`}>
             <span className="dot" />
             {quiet ? 'Archived' : `${project.goalCount} ${goalWord}`}

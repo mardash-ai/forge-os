@@ -15,6 +15,9 @@ export interface Project {
   title: string;
   description: string;
   status: ProjectStatus;
+  /** The Area (life domain) this Project is tagged to (A2), or null. A Project is tagged to
+   *  ≤1 Area; the FK is nulled (never cascade-deleted) when its Area is deleted. */
+  areaId: string | null;
   createdAt: string;
 }
 
@@ -29,8 +32,13 @@ export interface ProjectRollup {
   progress: number; // integer 0–100, task-weighted across member goals
 }
 
-/** A Project plus its derived rollup — the shape the list renders. */
-export interface ProjectWithRollup extends Project, ProjectRollup {}
+/** A Project plus its derived rollup — the shape the list renders. The Area name/color (A2)
+ *  ride along on list rows that LEFT JOIN areas, for the card chip; optional because not
+ *  every constructor of this shape joins the area. */
+export interface ProjectWithRollup extends Project, ProjectRollup {
+  areaName?: string | null;
+  areaColor?: string | null;
+}
 
 /** A Project, its rollup, and its member Goals (each with their own progress) — the
  *  shape the detail view renders. */

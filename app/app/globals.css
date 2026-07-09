@@ -1565,6 +1565,10 @@ a {
   font-family: var(--body);
   font-size: 16px;
   color: var(--chalk);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
 }
 .habit-meta {
   font-family: var(--mono);
@@ -1825,6 +1829,232 @@ a {
   }
   .newproject {
     min-width: 0;
+  }
+}
+
+/* ============ Areas — life domains (A2) ============ */
+/* The Area tag shown on a Goal / Habit / Project card or detail: a colored accent dot + the
+   Area's name, in the same pill family as the status chip but quieter. */
+.area-chip {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  color: var(--ash);
+  padding: 3px 9px;
+  border: 1px solid var(--iron-edge);
+  border-radius: 999px;
+  white-space: nowrap;
+}
+.area-chip-md {
+  font-size: 12px;
+  padding: 4px 11px;
+}
+.area-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--ash);
+  flex: none;
+}
+/* On a goal card the status chip owns margin-left:auto; keep the area chip snug to the title. */
+.goal-top .area-chip {
+  margin-left: 0;
+}
+
+/* Goal-detail tags row: the project tag and the area chip sit together under the title. */
+.detail-tags {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+/* Create form on /areas — name input + swatches + actions, mirroring NewProject. */
+.newarea-wrap {
+  width: 100%;
+}
+.newarea {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  align-items: stretch;
+  min-width: min(420px, 72vw);
+}
+.newarea-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+/* Accent swatch picker (shared by NewArea + EditArea). */
+.swatches {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+.swatch {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: 1px solid var(--iron-edge);
+  cursor: pointer;
+  padding: 0;
+  transition: transform 0.1s ease, box-shadow 0.1s ease;
+}
+.swatch:hover {
+  transform: scale(1.1);
+}
+.swatch.on {
+  box-shadow: 0 0 0 2px var(--slag), 0 0 0 3px var(--chalk);
+}
+.swatch-none {
+  background: transparent;
+  color: var(--ash);
+  font-size: 14px;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.swatch:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+/* The areas list on /areas. */
+.areas {
+  list-style: none;
+  margin: 26px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.area-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 16px;
+  background: var(--forge);
+  border: 1px solid var(--iron-edge);
+  border-radius: 8px;
+}
+.area-swatch {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--ash);
+  flex: none;
+}
+.area-main {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.area-name {
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--chalk);
+}
+.area-meta {
+  font-family: var(--mono);
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  color: var(--ash);
+}
+.area-actions {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  flex: none;
+}
+.area-edit-toggle,
+.area-delete {
+  font-size: 13px;
+  padding: 4px 10px;
+}
+.area-delete:hover:not(:disabled) {
+  color: var(--warn);
+}
+.edit-area {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.edit-area-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+/* The tag picker (on a Goal / Habit / Project) + the list filter — a compact labelled select. */
+.area-picker,
+.area-filter {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.area-picker-label,
+.area-filter-label {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ash);
+}
+.area-select {
+  font-family: var(--body);
+  font-size: 14px;
+  color: var(--chalk);
+  background: var(--forge);
+  border: 1px solid var(--iron-edge);
+  border-radius: 5px;
+  padding: 6px 10px;
+  color-scheme: dark;
+  cursor: pointer;
+  max-width: 40vw;
+}
+.area-select:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+.area-picker-empty {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  color: var(--ash);
+}
+.area-picker-empty a {
+  color: var(--t3);
+}
+
+@media (max-width: 640px) {
+  /* The habit row gains an Area picker; let it wrap rather than overflow on phones. */
+  .habit {
+    flex-wrap: wrap;
+  }
+  .habit .area-picker {
+    order: 5;
+  }
+}
+
+@media (max-width: 560px) {
+  .newarea {
+    min-width: 0;
+  }
+  .area-row {
+    flex-wrap: wrap;
+  }
+  .area-select {
+    max-width: 60vw;
   }
 }
 

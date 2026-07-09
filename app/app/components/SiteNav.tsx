@@ -3,7 +3,7 @@ import { syncNotifications } from '@/lib/notification-inbox';
 import { getSession } from '@/lib/auth';
 import { NavMenu } from './NavMenu';
 
-type Page = 'floor' | 'projects' | 'today' | 'habits' | 'log' | 'alerts';
+type Page = 'floor' | 'projects' | 'areas' | 'today' | 'habits' | 'log' | 'alerts';
 
 // Primary nav across the Forge Floor (/), Today (/today), Habits (/habits), the
 // Log (/timeline), and Alerts (/notifications). Async: it reconciles the platform
@@ -32,6 +32,14 @@ export async function SiteNav({ current }: { current: Page }) {
         aria-current={current === 'projects' ? 'page' : undefined}
       >
         Projects
+      </Link>
+      <span className="sep" aria-hidden="true">·</span>
+      <Link
+        href="/areas"
+        className={current === 'areas' ? 'on' : ''}
+        aria-current={current === 'areas' ? 'page' : undefined}
+      >
+        Areas
       </Link>
       <span className="sep" aria-hidden="true">·</span>
       <Link href="/today" className={current === 'today' ? 'on' : ''} aria-current={current === 'today' ? 'page' : undefined}>

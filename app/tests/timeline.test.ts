@@ -83,11 +83,36 @@ describe('project events (A1)', () => {
   });
 });
 
+describe('area events (A2)', () => {
+  it('describes area.created and resource.tagged verb-led', () => {
+    expect(describeEvent(ev({ type: 'area.created', data: { areaName: 'Health' } }))).toBe(
+      'Marked out the “Health” area',
+    );
+    expect(
+      describeEvent(
+        ev({ type: 'resource.tagged', data: { areaName: 'Health', resourceKind: 'goal', resourceTitle: 'Run a 5k' } }),
+      ),
+    ).toBe('Filed “Run a 5k” under “Health”');
+  });
+
+  it('maps area.* events to reused sparks (none of them warm)', () => {
+    expect(sparkKind(ev({ type: 'area.created' }))).toBe('created');
+    expect(sparkKind(ev({ type: 'resource.tagged' }))).toBe('added');
+    expect(isWarm(ev({ type: 'area.created' }))).toBe(false);
+    expect(isWarm(ev({ type: 'resource.tagged' }))).toBe(false);
+  });
+});
+
 describe('eventHref', () => {
   it('routes project.* events (subject = projectId) to /projects/<id>', () => {
     expect(eventHref(ev({ type: 'project.created', goalId: 'p1' }))).toBe('/projects/p1');
     expect(eventHref(ev({ type: 'goal.added_to_project', goalId: 'p1' }))).toBe('/projects/p1');
     expect(eventHref(ev({ type: 'project.archived', goalId: 'p1' }))).toBe('/projects/p1');
+  });
+
+  it('routes area.* events (subject = areaId) to the /areas surface', () => {
+    expect(eventHref(ev({ type: 'area.created', goalId: 'a1' }))).toBe('/areas');
+    expect(eventHref(ev({ type: 'resource.tagged', goalId: 'a1' }))).toBe('/areas');
   });
 
   it('routes goal/task events to /goals/<id> and a subject-less event to the floor', () => {

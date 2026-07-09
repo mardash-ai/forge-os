@@ -1,8 +1,9 @@
 import { NextResponse } from 'next/server';
-import { getProject, setProjectStatus, updateProject } from '@/lib/db';
+import { getProject, setProjectArea, setProjectStatus, updateProject } from '@/lib/db';
 import { requireOwner } from '@/lib/auth';
 import { validateTitle } from '@/lib/goals';
 import { isProjectStatus } from '@/lib/projects';
+import { parseAreaIdField } from '@/lib/areas';
 
 export const dynamic = 'force-dynamic';
 
@@ -25,6 +26,20 @@ export async function PATCH(request: Request, { params }: { params: { id: string
   }
   const fields = (body ?? {}) as Record<string, unknown>;
   const owner = await requireOwner();
+
+  // Tagging (A2): set/clear this project's Area is its own path. `null` clears; a foreign/
+  // unknown area or project is a 404 (setProjectArea is owner-scoped).
+  const areaField = parseAreaIdField(fields);
+  if (areaField.kind !== 'absent') {
+    if (areaField.kind === 'invalid') {
+      return NextResponse.json({ error: 'areaId must be an area id or null.' }, { status: 400 });
+    }
+    const tagged = await setProjectArea(owner, params.id, areaField.kind === 'set' ? areaField.areaId : null);
+    if (!tagged) {
+      return NextResponse.json({ error: 'Project or area not found.' }, { status: 404 });
+    }
+    return NextResponse.json(tagged);
+  }
 
   // A status change (active/archived) is its own path — archiving detaches member goals.
   if ('status' in fields) {

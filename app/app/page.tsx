@@ -1,16 +1,19 @@
 import Link from 'next/link';
 import type { GoalWithProgress } from '@/lib/goals';
-import { listGoals } from '@/lib/db';
+import { listAreaOptions, listGoals } from '@/lib/db';
 import { requireOwner } from '@/lib/auth';
 import { HeatBar } from '@/app/components/HeatBar';
 import { NewGoal } from '@/app/components/NewGoal';
 import { SiteNav } from '@/app/components/SiteNav';
+import { AreaChip } from '@/app/components/AreaChip';
+import { AreaFilter } from '@/app/components/AreaFilter';
 
 export const dynamic = 'force-dynamic';
 
-export default async function HomePage() {
+export default async function HomePage({ searchParams }: { searchParams?: { area?: string } }) {
   const owner = await requireOwner();
-  const goals = await listGoals(owner);
+  const areaFilter = searchParams?.area ?? null;
+  const [goals, areas] = await Promise.all([listGoals(owner, areaFilter), listAreaOptions(owner)]);
   const active = goals
     .filter((g) => g.status === 'active')
     .sort((a, b) => b.progress - a.progress);
@@ -37,6 +40,7 @@ export default async function HomePage() {
           </p>
         </div>
         <div className="head-actions">
+          <AreaFilter areas={areas} current={areaFilter} />
           <NewGoal />
         </div>
       </div>
@@ -56,6 +60,7 @@ export default async function HomePage() {
               <Link className="goal-link" href={`/goals/${g.id}`}>
                 <div className="goal-top">
                   <h2 className="goal-title">{g.title}</h2>
+                  {g.areaId && g.areaName ? <AreaChip name={g.areaName} color={g.areaColor} /> : null}
                   <span className="chip active">
                     <span className="dot" />
                     Active
@@ -103,6 +108,7 @@ function QuietCard({ goal, archived }: { goal: GoalWithProgress; archived: boole
       <Link className="goal-link" href={`/goals/${goal.id}`}>
         <div className="goal-top">
           <h2 className="goal-title">{goal.title}</h2>
+          {goal.areaId && goal.areaName ? <AreaChip name={goal.areaName} color={goal.areaColor} /> : null}
           <span className={`chip ${archived ? 'archived' : 'achieved'}`}>
             <span className="dot" />
             {archived ? 'Archived' : 'Forged'}

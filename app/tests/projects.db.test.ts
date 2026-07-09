@@ -85,7 +85,7 @@ describe('owner-scoping — every project query filters WHERE owner_id', () => {
     hoisted.state.handler = () => [];
     const result = await getProject(OTHER, PID);
     expect(result).toBeNull();
-    const q = find('FROM projects WHERE id')!;
+    const q = find('WHERE p.id = $1 AND p.owner_id = $2')!;
     expect(q.params).toEqual([PID, OTHER]);
     // Existence never leaks: with no project match we must not have queried its member goals.
     expect(find('g.project_id = $1')).toBeUndefined();
@@ -99,7 +99,7 @@ describe('owner-scoping — every project query filters WHERE owner_id', () => {
 
   it('getProject rolls up progress across the owner’s member goals', async () => {
     hoisted.state.handler = (text) => {
-      if (text.includes('FROM projects WHERE id')) {
+      if (text.includes('WHERE p.id = $1 AND p.owner_id = $2')) {
         return [{ id: PID, title: 'P', description: 'd', status: 'active', created_at: new Date('2026-01-01') }];
       }
       if (text.includes('g.project_id = $1')) {

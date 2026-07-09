@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { getGoal } from '@/lib/db';
+import { getGoal, listAreaOptions } from '@/lib/db';
 import { requireOwner } from '@/lib/auth';
 import { HeatBar } from '@/app/components/HeatBar';
 import { AddTaskForm } from '@/app/components/AddTaskForm';
@@ -8,6 +8,8 @@ import { CompleteButton } from '@/app/components/CompleteButton';
 import { StatusControl } from '@/app/components/StatusControl';
 import { DueDate } from '@/app/components/DueDate';
 import { PlanTasks } from '@/app/components/PlanTasks';
+import { AreaChip } from '@/app/components/AreaChip';
+import { AreaPicker } from '@/app/components/AreaPicker';
 
 export const dynamic = 'force-dynamic';
 
@@ -16,6 +18,7 @@ export default async function GoalPage({ params }: { params: { id: string } }) {
   // Owner-scoped: another user's goal is absent → notFound() (a 404 page, never a 403).
   const goal = await getGoal(owner, params.id);
   if (!goal) notFound();
+  const areas = await listAreaOptions(owner);
 
   return (
     <main className="wrap">
@@ -28,14 +31,18 @@ export default async function GoalPage({ params }: { params: { id: string } }) {
 
       <div className="detail-head">
         <h1 className="detail-title">{goal.title}</h1>
-        {goal.projectId && goal.projectTitle ? (
-          <Link className="project-tag" href={`/projects/${goal.projectId}`}>
-            <span className="project-tag-mark" aria-hidden="true">◇</span>
-            {goal.projectTitle}
-          </Link>
-        ) : null}
+        <div className="detail-tags">
+          {goal.projectId && goal.projectTitle ? (
+            <Link className="project-tag" href={`/projects/${goal.projectId}`}>
+              <span className="project-tag-mark" aria-hidden="true">◇</span>
+              {goal.projectTitle}
+            </Link>
+          ) : null}
+          {goal.areaId && goal.areaName ? <AreaChip name={goal.areaName} color={goal.areaColor} size="md" /> : null}
+        </div>
         <div className="detail-meta">
           <StatusControl id={goal.id} status={goal.status} />
+          <AreaPicker kind="goals" resourceId={goal.id} currentAreaId={goal.areaId} areas={areas} />
           <span className="readout big-readout">
             {goal.done} / {goal.total} <span className="pct">· {goal.progress}%</span>
           </span>

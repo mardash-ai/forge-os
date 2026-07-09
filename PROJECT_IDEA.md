@@ -60,6 +60,7 @@ The three catalogs below are annotated with live status. Legend: ✅ built · �
 | Artifact | ✅ v3 | an agent's produced result; platform-owned via C1 |
 | **User / Account** | ✅ v0.7 | identity **shipped** (C10, `0.6.0`) **and** per-user *ownership* **shipped** — every resource is owner-scoped and users are fully isolated (§5 Epic M · M2 / C11, adopted `0.7.0`) |
 | **Project** | ✅ v5 | group related Goals + roll up task-weighted progress/heat across members; add/remove goals; archive (goals survive — the FK is nulled). Owner-scoped like every resource. Shipped `0.14.0` |
+| **Area** | ✅ v6 | a user-defined **life domain** (Health/Career/Finance/…); tag a Goal, Habit, or Project to ≤1 Area, then **filter every list view** by it. Deleting an Area keeps the tagged resources (the FK is nulled). Owner-scoped like every resource. Shipped `0.15.0` |
 | **Document / Note** | ⬜ | the "second brain" surface (§5 Epic B) |
 | **Idea** | ⬜ | lightweight capture, promotable to Goal/Task |
 | **Journal** | ⬜ | daily entries + reflection (§5 Epic C) |
@@ -69,10 +70,11 @@ The three catalogs below are annotated with live status. Legend: ✅ built · �
 
 **Capabilities** — Plan ✅ · Notify ✅ · Schedule 🟡 (due dates + Today + a background cron; no
 calendar/auto-scheduling) · Generate 🟡 (only task proposals) · Prioritize 🟡 (implicit ordering
-only) · Review 🟡 (human accept/reject of proposals) · Organize 🟡 (goal lifecycle **+ Projects**:
-group related Goals and roll up their heat, `0.14.0`; no Areas/tags yet) · Research ⬜ · Write ⬜ ·
+only) · Review 🟡 (human accept/reject of proposals) · Organize 🟡 (goal lifecycle **+ Projects**
+(group related Goals and roll up their heat, `0.14.0`) **+ Areas** (tag Goals/Habits/Projects to a
+life domain and filter by it, `0.15.0`); no sub-goals yet) · Research ⬜ · Write ⬜ ·
 Summarize ⬜ · **Search ⬜** (nothing is searchable yet — the single most conspicuous gap; Projects
-begin to make it necessary).
+and Areas begin to make it necessary).
 
 **Agents** — Planner ✅. Researcher ⬜ · Writer ⬜ · Scheduler ⬜ (note: a C2 *background job*
 finalizes streaks, but there is no AI Scheduler agent) · Meeting Assistant ⬜ · Career Coach ⬜ ·
@@ -82,10 +84,13 @@ Finance Assistant ⬜ · Travel Planner ⬜.
 
 ## 3. Implementation status — where we actually are
 
-**Current app version: `0.14.0`** (SemVer in `app/package.json` / [CHANGELOG.md](CHANGELOG.md)). Eight
-pages, nineteen API routes, Postgres-persisted, Next.js App Router + TypeScript + Vitest (plus a
-read-only **prod smoke suite**, run separately — see below). The newest surface is **Projects**
-(`/projects` + a project detail view, `0.14.0`) — group related Goals and see their combined heat. The primary **site nav is responsive**
+**Current app version: `0.15.0`** (SemVer in `app/package.json` / [CHANGELOG.md](CHANGELOG.md)). Nine
+pages, twenty-one API routes, Postgres-persisted, Next.js App Router + TypeScript + Vitest (plus a
+read-only **prod smoke suite**, run separately — see below). The newest surface is **Areas**
+(`/areas`, `0.15.0`) — user-defined life domains you tag Goals, Habits & Projects to (≤1 each) and
+then **filter every list view** by; deleting an Area keeps the tagged resources (the FK is nulled).
+It builds directly on **Projects** (`/projects` + a project detail view, `0.14.0`) — group related
+Goals and see their combined heat. The primary **site nav is responsive**
 (`0.12.2`): below the 768px tablet breakpoint the full row of options collapses into a tap-to-open
 **"Menu"** button (a `<button>` with `aria-expanded`, Escape/outside-click to close), so on phones
 nothing runs past the right edge and the page never scrolls sideways; tablet-and-up is unchanged. Runs on the Forge platform at **`0.23.0`**
@@ -156,6 +161,7 @@ flags to the CLI (the **P16** `make deploy` fix).
 | **v4** | Habits | [specs/habits/](specs/habits/) | Daily/weekly habits, idempotent check-ins, streak that climbs as heat and resets on a miss |
 | **v4+** | App footer | [specs/app-footer/](specs/app-footer/) | Site-wide footer (`0.11.0`): the live app version (`v<X.Y.Z>`, read dynamically from `package.json` — never hardcoded) + a static **"Powered by Mardash Forge"** attribution, isolated as link-ready markup (the platform lifts it later — tracked upstream as capability C17) |
 | **v5** | Projects (Epic A · A1) | §5 Epic A · A1 (this doc) | A **Project** groups related Goals (`/projects` + a project detail view, `0.14.0`): create with title + description, add/remove Goals (a Goal belongs to ≤1 Project), a read-time **task-weighted rollup** of progress/heat across members (reuses `lib/goals` progress + `lib/heat`), and **archive** (goals survive — the `project_id` FK is nulled, never cascade-deleted). Owner-scoped like every resource; emits `project.*` timeline events. Strengthens *Organize*; app-local (forced no new platform capability) |
+| **v6** | Areas (Epic A · A2) | §5 Epic A · A2 (this doc) | An **Area** is a user-defined life domain (`/areas`, `0.15.0`): create/rename/recolor/delete; tag a Goal, Habit, or Project to ≤1 Area, then **filter every list view** (Floor, Habits, Projects, Today) by `?area=<id>`. An `areas` table + a nullable `area_id` FK on goals/habits/projects (`ON DELETE SET NULL`, so deleting an Area keeps the resources — the tag is just nulled). Owner-scoped like every resource; emits `area.created` / `resource.tagged` timeline events. Strengthens *Organize*; app-local (Gate 0 ruled it pure domain reusing C10/C11/C3 — no new platform capability) |
 
 > **The only *product* surface added since v4 is app chrome (the footer above); no new domain feature
 > has shipped.** Everything in `0.1.1 → 0.5.0` was **platform
@@ -276,12 +282,17 @@ that starts to make **Search** necessary.
   belongs to ≤1 Project; project progress = a read-time **task-weighted rollup** across members;
   archiving/deleting a Project doesn't delete its Goals (the FK is nulled). Non-goals held: nested
   projects, sharing. · *Size S · ○*
-- **A2 · Areas (life domains)** — tag Goals/Habits/Projects to an Area (Health, Career, Finance,
-  Relationships, Growth). · *User can:* assign an Area; filter every view by Area; see a per-Area
-  dashboard. · *Introduces:* **Area** (a lightweight enum/resource); *Organize*. · *Borrow from:*
-  Notion PARA, Goalmap. · *Spec seed:* an `areas` table or a curated enum; `area_id` on
-  goals/habits/projects; AC: an "All / by Area" filter on `/`, `/habits`, `/today`. Non-goals: custom
-  per-user areas (needs identity). · *Size S · ○*
+- **A2 · Areas (life domains)** — ✅ **shipped (`0.15.0`).** Tag Goals/Habits/Projects to an Area
+  (Health, Career, Finance, Relationships, Growth). · *User can:* create/rename/recolor/delete an Area,
+  assign a Goal/Habit/Project to ≤1 Area, and **filter every list view** (Floor, Habits, Projects,
+  Today) by it. · *Introduces:* **Area** (a lightweight per-user resource); strengthens *Organize*. ·
+  *Pressured Forge →* nothing new — Gate 0 ruled it **fully app-local** (pure domain reusing
+  already-adopted C10 auth, C11 ownership, C3 app-events). · *Borrow from:* Notion PARA, Goalmap. ·
+  *Shipped as:* an `areas(id, owner_id, name, color, created_at)` table + a nullable `area_id uuid
+  REFERENCES areas(id) ON DELETE SET NULL` on `goals`, `habits`, and `projects` (deleting an Area
+  nulls the tag, never deletes the resource); owner-scoped CRUD + set/clear tag routes (cross-owner →
+  404); emits `area.created` / `resource.tagged` timeline events. Non-goals held: per-Area analytics
+  dashboard, an Area on Tasks. · *Size S · ○*
 - **A3 · Milestones / sub-goals** — a Goal can have child Goals (or typed milestones with target
   dates). · *User can:* break a big Goal into milestones; progress rolls up. · *Borrow from:* OKR
   key-results, 12-week-year. · *Spec seed:* `goals.parent_id` self-FK **or** a `milestones` table;
@@ -543,8 +554,8 @@ isolated (verified live with two users). Together they were a high-value wind-tu
 (Sharing/collaboration — **M3** — stays deferred until multi-user collaboration is genuinely needed.)
 
 **▶ Recommended next feature set — "Knowledge & Search" (Epics A + B).** Ship **A1 Projects ✅ (`0.14.0`) →
-A2 Areas → B1 Notes → B2 Quick Capture → B5 Global Search.** (A1 shipped app-local — Gate 0 ruled it
-pure domain, no new platform capability.) Why this set:
+A2 Areas ✅ (`0.15.0`) → B1 Notes → B2 Quick Capture → B5 Global Search.** (A1 + A2 shipped app-local —
+Gate 0 ruled each pure domain, no new platform capability; **B1 Notes is next**.) Why this set:
 - *Genuinely useful:* turns forge-os from a goal tracker into a real life OS / second brain — the
   category every competitor occupies and the one the domain model most obviously implies.
 - *Clean platform pressure:* it forces the **two most conspicuous missing Forge capabilities at once

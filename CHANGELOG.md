@@ -7,6 +7,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.15.0] — 2026-07-09
+
+### Added
+
+- **Areas — tag your life into domains (Epic A · A2).** A new **Area** resource (`/areas` management
+  surface) lets a user create, rename, recolor, and delete a life domain (Health, Career, Finance,
+  Relationships, Growth…), then **tag a Goal, Habit, or Project to at most one Area** and **filter every
+  list view by it**. Gate 0 ruled this **fully app-local** — pure domain reusing already-adopted
+  capabilities (C10 auth, C11 ownership, C3 app-events); it forces **no** new platform capability. Builds
+  directly on A1 · Projects and strengthens the *Organize* capability.
+- **Two additive, idempotent schema changes in `ensureSchema()`** (the house `CREATE TABLE IF NOT
+  EXISTS` / `ALTER TABLE … ADD COLUMN IF NOT EXISTS` pattern, re-run safe): an `areas` table
+  (`id, owner_id, name, color, created_at`) mirroring `projects`, with an `owner_id` index; and a nullable
+  `area_id uuid REFERENCES areas(id) ON DELETE SET NULL` (plus index) on **`goals`, `habits`, and
+  `projects`**. Deleting an Area **never deletes the tagged resources** — the FK nulls their tag and they
+  survive untagged.
+- **Owner-scoped API routes** (all behind the C10/C11 gate; `force-dynamic`): `GET/POST /api/areas`,
+  `GET/PATCH/DELETE /api/areas/[id]` (PATCH renames + recolors), and Area **tagging** folded into each
+  resource's PATCH — `PATCH /api/goals/[id]`, `/api/habits/[id]`, `/api/projects/[id]` accept
+  `{ areaId }` (a uuid to tag, `null` to clear). Every query filters `WHERE owner_id = $1`; a by-id fetch
+  of another user's Area — or tagging a resource to an Area you don't own — returns **404 (never 403)** so
+  existence never leaks.
+- **An Area filter on every list view** — the Floor (`/`), Habits, Projects, and Today gain a `?area=<id>`
+  filter (owner-scoped; Today filters by the task's goal's Area). A malformed area id is ignored, not an
+  error.
+- **`area.*` timeline events (C3)** — `area.created` and `resource.tagged` emit through the existing
+  best-effort `emitAppEvent`; the Log routes them to `/areas` via `eventHref`.
+- **UI in the "forge floor" aesthetic** — an `/areas` management surface (create with an accent-swatch
+  picker, inline rename/recolor, delete), an **Areas** entry in the mobile-safe primary nav, an Area
+  filter control on the list views, an Area tag picker on the Goal/Project detail pages and each Habit
+  row, and small Area chips (accent dot + name) on Goal/Habit/Project cards and detail pages.
+
 ## [0.14.0] — 2026-07-09
 
 ### Added
@@ -740,7 +772,8 @@ _This changelog started mid-project: the Goals & Tasks core and the Timeline →
 Reminders → Planner Agent → Habits features predate it; see `PROJECT_IDEA.md`'s roadmap and the git
 history for that record._
 
-[Unreleased]: https://github.com/mardash-ai/forge-os/compare/v0.14.0...HEAD
+[Unreleased]: https://github.com/mardash-ai/forge-os/compare/v0.15.0...HEAD
+[0.15.0]: https://github.com/mardash-ai/forge-os/compare/v0.14.0...v0.15.0
 [0.14.0]: https://github.com/mardash-ai/forge-os/compare/v0.13.0...v0.14.0
 [0.13.0]: https://github.com/mardash-ai/forge-os/compare/v0.12.2...v0.13.0
 [0.12.2]: https://github.com/mardash-ai/forge-os/compare/v0.12.1...v0.12.2

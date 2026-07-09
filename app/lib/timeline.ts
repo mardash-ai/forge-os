@@ -13,7 +13,11 @@ export type EventType =
   // in `data` for the added-to-project entry so the feed renders standalone.
   | 'project.created'
   | 'goal.added_to_project'
-  | 'project.archived';
+  | 'project.archived'
+  // A2 · Areas. `subject` is the areaId (see eventHref); the area name (and, for a
+  // tag, the tagged resource's kind + title) ride in `data` so the feed stands alone.
+  | 'area.created'
+  | 'resource.tagged';
 
 /** Denormalized snapshot stored with each event so the feed renders standalone.
  *  Under the C3 app event log, everything but the subject (=goalId, or projectId for
@@ -25,6 +29,11 @@ export interface EventData {
   projectTitle?: string;
   from?: GoalStatus;
   to?: GoalStatus;
+  // A2 · Areas. `areaName` names the area on both area.created and resource.tagged;
+  // resource.tagged also carries WHAT was filed (its kind + title).
+  areaName?: string;
+  resourceKind?: 'goal' | 'habit' | 'project';
+  resourceTitle?: string;
 }
 
 export interface TimelineEvent {
@@ -45,9 +54,11 @@ export function sparkKind(event: Pick<TimelineEvent, 'type' | 'data'>): SparkKin
   switch (event.type) {
     case 'goal.created':
     case 'project.created':
+    case 'area.created':
       return 'created';
     case 'task.added':
     case 'goal.added_to_project':
+    case 'resource.tagged':
       return 'added';
     case 'task.completed':
       return 'completed';
@@ -70,6 +81,8 @@ export function describeEvent(event: Pick<TimelineEvent, 'type' | 'data'>): stri
   const goal = event.data.goalTitle ?? 'a goal';
   const task = event.data.taskTitle ?? 'a task';
   const project = event.data.projectTitle ?? 'a project';
+  const area = event.data.areaName ?? 'an area';
+  const resource = event.data.resourceTitle ?? 'a resource';
   switch (event.type) {
     case 'goal.created':
       return `Created “${goal}”`;
@@ -83,6 +96,10 @@ export function describeEvent(event: Pick<TimelineEvent, 'type' | 'data'>): stri
       return `Added “${goal}” to “${project}”`;
     case 'project.archived':
       return `Archived “${project}”`;
+    case 'area.created':
+      return `Marked out the “${area}” area`;
+    case 'resource.tagged':
+      return `Filed “${resource}” under “${area}”`;
     case 'goal.status_changed':
       if (event.data.to === 'achieved') return `Forged “${goal}”`;
       if (event.data.to === 'archived') return `Archived “${goal}”`;
@@ -91,8 +108,9 @@ export function describeEvent(event: Pick<TimelineEvent, 'type' | 'data'>): stri
 }
 
 /** Where an event links in the feed. Project events carry the projectId in `goalId`
- *  (the platform `subject`), so they route to /projects/<id>; goal/task events route
- *  to /goals/<id>; a subject-less event falls back to the floor. */
+ *  (the platform `subject`), so they route to /projects/<id>; area events carry the areaId
+ *  and route to the Areas surface; goal/task events route to /goals/<id>; a subject-less
+ *  event falls back to the floor. */
 export function eventHref(event: Pick<TimelineEvent, 'type' | 'goalId'>): string {
   if (!event.goalId) return '/';
   switch (event.type) {
@@ -100,6 +118,9 @@ export function eventHref(event: Pick<TimelineEvent, 'type' | 'goalId'>): string
     case 'goal.added_to_project':
     case 'project.archived':
       return `/projects/${event.goalId}`;
+    case 'area.created':
+    case 'resource.tagged':
+      return '/areas';
     default:
       return `/goals/${event.goalId}`;
   }

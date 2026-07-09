@@ -1,16 +1,18 @@
 import Link from 'next/link';
-import { listDueTasks } from '@/lib/db';
+import { listAreaOptions, listDueTasks } from '@/lib/db';
 import { requireOwner } from '@/lib/auth';
 import { groupByBucket, relativeDueLabel } from '@/lib/schedule';
 import { SiteNav } from '@/app/components/SiteNav';
 import { StrikeTask } from '@/app/components/StrikeTask';
+import { AreaFilter } from '@/app/components/AreaFilter';
 
 export const dynamic = 'force-dynamic';
 
-export default async function TodayPage() {
+export default async function TodayPage({ searchParams }: { searchParams?: { area?: string } }) {
   const now = new Date();
   const owner = await requireOwner();
-  const tasks = await listDueTasks(owner);
+  const areaFilter = searchParams?.area ?? null;
+  const [tasks, areas] = await Promise.all([listDueTasks(owner, areaFilter), listAreaOptions(owner)]);
   const groups = groupByBucket(tasks, now);
 
   return (
@@ -26,6 +28,9 @@ export default async function TodayPage() {
         <div className="head-text">
           <p className="eyebrow">On the anvil</p>
           <h1>What needs working</h1>
+        </div>
+        <div className="head-actions">
+          <AreaFilter areas={areas} current={areaFilter} />
         </div>
       </div>
 

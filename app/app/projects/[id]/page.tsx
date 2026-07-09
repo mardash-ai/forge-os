@@ -1,12 +1,14 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { getProject, listAddableGoals } from '@/lib/db';
+import { getProject, listAddableGoals, listAreaOptions } from '@/lib/db';
 import { requireOwner } from '@/lib/auth';
 import { HeatBar } from '@/app/components/HeatBar';
 import { ProjectStatusControl } from '@/app/components/ProjectStatusControl';
 import { EditProject } from '@/app/components/EditProject';
 import { AddGoalToProject } from '@/app/components/AddGoalToProject';
 import { RemoveGoalFromProject } from '@/app/components/RemoveGoalFromProject';
+import { AreaChip } from '@/app/components/AreaChip';
+import { AreaPicker } from '@/app/components/AreaPicker';
 
 export const dynamic = 'force-dynamic';
 
@@ -15,7 +17,7 @@ export default async function ProjectPage({ params }: { params: { id: string } }
   // Owner-scoped: another user's project is absent → notFound() (a 404 page, never a 403).
   const project = await getProject(owner, params.id);
   if (!project) notFound();
-  const addable = await listAddableGoals(owner);
+  const [addable, areas] = await Promise.all([listAddableGoals(owner), listAreaOptions(owner)]);
 
   const goalWord = project.goalCount === 1 ? 'goal' : 'goals';
 
@@ -31,10 +33,14 @@ export default async function ProjectPage({ params }: { params: { id: string } }
       <div className="detail-head">
         <div className="detail-title-row">
           <h1 className="detail-title">{project.title}</h1>
+          {project.areaId && project.areaName ? (
+            <AreaChip name={project.areaName} color={project.areaColor} size="md" />
+          ) : null}
           <EditProject id={project.id} title={project.title} description={project.description} />
         </div>
         <div className="detail-meta">
           <ProjectStatusControl id={project.id} status={project.status} />
+          <AreaPicker kind="projects" resourceId={project.id} currentAreaId={project.areaId} areas={areas} />
           <span className="readout big-readout">
             {project.goalCount} {goalWord}
             <span className="pct"> · {project.doneTasks} / {project.totalTasks} tasks · {project.progress}%</span>
@@ -61,6 +67,7 @@ export default async function ProjectPage({ params }: { params: { id: string } }
               <Link className="goal-link" href={`/goals/${g.id}`}>
                 <div className="goal-top">
                   <h2 className="goal-title">{g.title}</h2>
+                  {g.areaId && g.areaName ? <AreaChip name={g.areaName} color={g.areaColor} /> : null}
                   <span className={`chip ${g.status}`}>
                     <span className="dot" />
                     {g.status === 'active' ? 'Active' : g.status === 'achieved' ? 'Forged' : 'Archived'}

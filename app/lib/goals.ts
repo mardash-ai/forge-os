@@ -13,6 +13,9 @@ export interface Goal {
   /** The Project this Goal belongs to (A1), or null. A Goal belongs to ≤1 Project;
    *  the FK is nulled (never cascade-deleted) when its Project is archived/deleted. */
   projectId: string | null;
+  /** The Area (life domain) this Goal is tagged to (A2), or null. A Goal is tagged to
+   *  ≤1 Area; the FK is nulled (never cascade-deleted) when its Area is deleted. */
+  areaId: string | null;
   createdAt: string;
 }
 
@@ -25,11 +28,15 @@ export interface Task {
   createdAt: string;
 }
 
-/** A goal plus its derived progress (never stored — always computed from tasks). */
+/** A goal plus its derived progress (never stored — always computed from tasks). The Area
+ *  name/color (A2) ride along on list rows that LEFT JOIN areas, for the card chip; they are
+ *  optional because not every constructor of this shape joins the area. */
 export interface GoalWithProgress extends Goal {
   total: number;
   done: number;
   progress: number; // integer 0–100
+  areaName?: string | null;
+  areaColor?: string | null;
 }
 
 export interface GoalWithTasks extends GoalWithProgress {
