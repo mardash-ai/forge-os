@@ -84,7 +84,7 @@ Finance Assistant ⬜ · Travel Planner ⬜.
 
 ## 3. Implementation status — where we actually are
 
-**Current app version: `0.15.4`** (SemVer in `app/package.json` / [CHANGELOG.md](CHANGELOG.md)). Nine
+**Current app version: `0.16.0`** (SemVer in `app/package.json` / [CHANGELOG.md](CHANGELOG.md)). Nine
 pages, twenty-one API routes, Postgres-persisted, Next.js App Router + TypeScript + Vitest (plus a
 read-only **prod smoke suite**, run separately — see below). The newest surface is **Areas**
 (`/areas`, `0.15.0`) — user-defined life domains you tag Goals, Habits & Projects to (≤1 each) and
@@ -94,8 +94,15 @@ Goals and see their combined heat. The primary **site nav is responsive**
 (`0.12.2`): below the 768px tablet breakpoint the full row of options collapses into a tap-to-open
 **"Menu"** button (a `<button>` with `aria-expanded`, Escape/outside-click to close), so on phones
 nothing runs past the right edge and the page never scrolls sideways; tablet-and-up is unchanged. Projects,
-Areas and the mobile-nav fix are **live in production** as of this release. Runs on the Forge platform with the
-control-plane at **`0.26.2`** and the data-plane at **`0.22.0`** (both digest-pinned; multi-arch). The `./forge`
+Areas and the mobile-nav fix are **live in production**. Runs on the Forge platform with the
+control-plane at **`0.26.4`** and the data-plane at **`0.26.4`** (both digest-pinned; multi-arch). The
+**`0.26.4` data-plane roll (`0.16.0`) brings three newly-delivered platform capabilities' endpoints live**:
+operator-declared **status incidents** now render on the public `/status` (+ `/status.json`) with **no app
+code** — the existing proxy just gains an incidents section, byte-identical when none exist (**C15 · P3**);
+generic **owner-scoped full-text search** (`POST /search` + `/index`·`/index/delete`·`/reindex`, **C19**); and
+**owner-scoped blob storage** (`POST /blobs` · `GET/DELETE /blobs/:id`, **C20**). The search + blob **endpoints
+are live server-side now** (reached via `FORGE_EVENTS_URL`); the app-consumer features that build on them — a
+**search UI** (Epic B/L) and **Notes attachments** (Epic B) — follow in later passes. The `./forge`
 wrapper dials the in-container API on the IPv4 literal `127.0.0.1` so it never misdials IPv6 `::1` (**P20**), and
 it now **always polls `/health` before exec'ing the CLI** so a cold-start container bind can't race the `make up`
 → `forge release` handoff (**P22**). The deploy control-plane moved off the `0.24.1` stopgap to `0.26.2`, which
@@ -129,7 +136,10 @@ flags to the CLI (the **P16** `make deploy` fix).
 > (`0.10.1`) — the render is byte-identical (`--forge-color-bg:#16120e`, dark surfaces/text unchanged).
 > A **public `/status`** (+ `/status.json`) — proxied same-origin to
 > the data-plane and reachable with **no login** — aggregates the app's own `/api/health` (**C15**),
-> so an outage is visible without signing in.
+> so an outage is visible without signing in. As of the `0.26.4` data-plane (`0.16.0`) it also renders
+> **operator-declared incidents** (active + recent, with a banner floor) via the platform CLI
+> (`forge status incident create/update/resolve/list`) — still **no app code**, byte-identical when
+> none are open (**C15 · P3**).
 
 > **🔎 Production smoke suite (app-local first cut of C14).** A small, strictly **read-only /
 > non-destructive** HTTP suite validates the *deployed* app end-to-end: `/api/health` (public, C6

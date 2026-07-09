@@ -7,6 +7,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.16.0] — 2026-07-09
+
+### Changed
+
+- **Adopt the forge `0.26.4` data-plane — one volume-preserving roll brings three delivered
+  capabilities' endpoints live: status incidents, generic search, and blob storage.** Bump the
+  data-plane pin (`app/compose.prod.yaml` + `app/forge.app.json`) →
+  `forge-data-plane:0.26.4@sha256:481d0da0…` (multi-arch amd64+arm64, digest-pinned), regenerated via
+  `forge productionize` (the web image stays at `forge-os-app@sha256:9427e4da…`; the control-plane is
+  unchanged at `0.26.4`). No app code changes — this pass is the data-plane roll + endpoint proof; the
+  consumer features that build on the new endpoints follow in later passes. What the roll serves:
+  - **Status incidents (C15 · P3).** `/status` + `/status.json` now render operator-declared incidents
+    (active + recent, with a banner floor), driven by the platform CLI
+    (`forge status incident create/update/resolve/list`). **No app code** — the same-origin `/status`
+    proxy just gains an incidents section, byte-identical when none are open.
+  - **Generic full-text search (C19).** Owner-scoped `POST /search` + `/index` · `/index/delete` ·
+    `/reindex` endpoints are live server-side (reached via `FORGE_EVENTS_URL`). A search UI is a later pass.
+  - **Blob storage (C20).** Owner-scoped `POST /blobs` · `GET/DELETE /blobs/:id` (multipart) are live
+    server-side. Notes attachments (the consumer feature) is a later pass.
+- **No logout across the roll (P17).** The roll recreates only the data-plane container onto the new
+  image while re-mounting the **same `forge_state` named volume** (sessions / refresh tokens / the new
+  incident·search·blob stores) and reading the **unchanged** `AUTH_SESSION_SECRET` from `app/.env.prod`
+  through the fail-loud `${AUTH_SESSION_SECRET:?…}` interpolation — the `app/compose.prod.yaml` diff
+  touches only the data-plane image line, so the session-signing key and the store volume are
+  byte-identical old→new and signed-in users survive the deploy.
+- **Re-apply the two hand-added blocks `forge productionize` still drops (P18).** The regeneration drops
+  the C15 uptime-sampler env on the data-plane (`FORGE_STATUS_SAMPLE=1` / `FORGE_STATUS_SAMPLE_INTERVAL=5m`)
+  and the `app/.env.prod` migration note in `app/PROVISIONING.md`; both are restored so the net commit is
+  only the data-plane pin bump.
+
 ## [0.15.6] — 2026-07-09
 
 ### Changed
@@ -888,7 +918,8 @@ _This changelog started mid-project: the Goals & Tasks core and the Timeline →
 Reminders → Planner Agent → Habits features predate it; see `PROJECT_IDEA.md`'s roadmap and the git
 history for that record._
 
-[Unreleased]: https://github.com/mardash-ai/forge-os/compare/v0.15.6...HEAD
+[Unreleased]: https://github.com/mardash-ai/forge-os/compare/v0.16.0...HEAD
+[0.16.0]: https://github.com/mardash-ai/forge-os/compare/v0.15.6...v0.16.0
 [0.15.6]: https://github.com/mardash-ai/forge-os/compare/v0.15.5...v0.15.6
 [0.15.5]: https://github.com/mardash-ai/forge-os/compare/v0.15.4...v0.15.5
 [0.15.4]: https://github.com/mardash-ai/forge-os/compare/v0.15.3...v0.15.4
