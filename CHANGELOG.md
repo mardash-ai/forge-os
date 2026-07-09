@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.15.3] — 2026-07-09
+
+### Changed
+
+- **Pin the deploy control-plane to forge `0.24.1` — `0.26.x`'s API doesn't serve on the box yet.**
+  Revert `FORGE_IMAGE` (`compose.yaml`) → `forge-control-plane:0.24.1@sha256:b254f9e2…` (multi-arch,
+  digest-pinned). `0.24.1` already carries everything `forge release` needs — **C18** (the release
+  pipeline), **P19** (lenient app resolution from `app/forge.app.json` on a store-less box), and the
+  C7/C8/C14 phases it composes — and its API binds + serves on the production box (verified in-container:
+  `fetch('http://127.0.0.1:3717/health')` → 200). `0.26.x` adds later data-plane capabilities (C19/C20)
+  the deploy does not need, and has a **separate control-plane boot regression** that leaves its API not
+  listening on this box (a forge fix is in flight); adopting `0.26.x` is deferred until that lands.
+- **Keep the P20 `./forge` wrapper dial fix (`127.0.0.1`).** The wrapper's `FORGE_API_URL=http://127.0.0.1:3717`
+  (and its `127.0.0.1` readiness probe) is **version-independent** — `0.24.1`'s CLI honors `FORGE_API_URL`
+  — so it stays as the operative override that avoids the in-container IPv6 `::1` misdial (P20). The
+  data-plane pin is **unchanged** (`forge-data-plane:0.22.0@sha256:9de9a8a0…`); this batch (mobile nav fix
+  + `make deploy`→`forge release` adoption + A1 Projects + A2 Areas) is **web-only** — no data-plane roll,
+  no session churn (no user logout).
+
 ## [0.15.2] — 2026-07-09
 
 ### Fixed
@@ -813,7 +832,8 @@ _This changelog started mid-project: the Goals & Tasks core and the Timeline →
 Reminders → Planner Agent → Habits features predate it; see `PROJECT_IDEA.md`'s roadmap and the git
 history for that record._
 
-[Unreleased]: https://github.com/mardash-ai/forge-os/compare/v0.15.2...HEAD
+[Unreleased]: https://github.com/mardash-ai/forge-os/compare/v0.15.3...HEAD
+[0.15.3]: https://github.com/mardash-ai/forge-os/compare/v0.15.2...v0.15.3
 [0.15.2]: https://github.com/mardash-ai/forge-os/compare/v0.15.1...v0.15.2
 [0.15.1]: https://github.com/mardash-ai/forge-os/compare/v0.15.0...v0.15.1
 [0.15.0]: https://github.com/mardash-ai/forge-os/compare/v0.14.0...v0.15.0

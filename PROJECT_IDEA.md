@@ -84,7 +84,7 @@ Finance Assistant ⬜ · Travel Planner ⬜.
 
 ## 3. Implementation status — where we actually are
 
-**Current app version: `0.15.2`** (SemVer in `app/package.json` / [CHANGELOG.md](CHANGELOG.md)). Nine
+**Current app version: `0.15.3`** (SemVer in `app/package.json` / [CHANGELOG.md](CHANGELOG.md)). Nine
 pages, twenty-one API routes, Postgres-persisted, Next.js App Router + TypeScript + Vitest (plus a
 read-only **prod smoke suite**, run separately — see below). The newest surface is **Areas**
 (`/areas`, `0.15.0`) — user-defined life domains you tag Goals, Habits & Projects to (≤1 each) and
@@ -93,9 +93,11 @@ It builds directly on **Projects** (`/projects` + a project detail view, `0.14.0
 Goals and see their combined heat. The primary **site nav is responsive**
 (`0.12.2`): below the 768px tablet breakpoint the full row of options collapses into a tap-to-open
 **"Menu"** button (a `<button>` with `aria-expanded`, Escape/outside-click to close), so on phones
-nothing runs past the right edge and the page never scrolls sideways; tablet-and-up is unchanged. Runs on the Forge platform at **`0.26.1`**
+nothing runs past the right edge and the page never scrolls sideways; tablet-and-up is unchanged. Runs on the Forge platform at **`0.24.1`**
 (control + data-plane, digest-pinned; the `./forge` wrapper dials the in-container API on the IPv4 literal
-`127.0.0.1` so it never misdials IPv6 `::1` — **P20**). **Deploys are now ONE command — `forge release`
+`127.0.0.1` so it never misdials IPv6 `::1` — **P20**; the deploy control-plane stays pinned to `0.24.1`
+because `0.26.x`'s API has a boot regression that doesn't serve on the box yet — `0.24.1` has everything
+`forge release` needs). **Deploys are now ONE command — `forge release`
 (C18, adopted `0.13.0`, forge `0.23.0`; the pipeline hardened to forge `0.24.1` which resolves the app leniently from
 `app/forge.app.json` so a real release runs on a store-less production box — **P19**).** `make deploy` is
 a thin call to `forge release --app forge-os --host
