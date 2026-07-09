@@ -1674,6 +1674,160 @@ a {
   }
 }
 
+/* ============ Projects — group related goals + roll up their heat (A1) ============ */
+/* Create form: title + description stacked, actions on their own line. */
+.newproject-wrap {
+  width: 100%;
+}
+.newproject {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: stretch;
+  min-width: min(420px, 72vw);
+}
+.newproject-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+/* A member goal on the project detail: the goal card + a remove affordance beside it. */
+.project-goal {
+  display: flex;
+  align-items: stretch;
+  gap: 0;
+}
+.project-goal .goal-link {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.goal-remove {
+  flex: none;
+  align-self: stretch;
+  background: transparent;
+  border: none;
+  border-left: 1px solid var(--iron-edge);
+  color: #6f665c;
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 15px;
+  border-radius: 0 6px 6px 0;
+  transition: color 0.12s ease, background 0.12s ease;
+}
+.goal-remove:hover:not(:disabled) {
+  color: var(--warn);
+  background: rgba(255, 255, 255, 0.02);
+}
+.goal-remove:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.goal-remove:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: -2px;
+}
+
+/* Add-a-goal picker: a native select + an Add button. */
+.add-goal-wrap {
+  width: 100%;
+}
+.add-goal {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.goal-select {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-family: var(--body);
+  font-size: 15px;
+  color: var(--chalk);
+  background: var(--forge);
+  border: 1px solid var(--iron-edge);
+  border-radius: 5px;
+  padding: 9px 12px;
+  color-scheme: dark;
+  cursor: pointer;
+}
+.goal-select:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+.add-goal-empty {
+  color: var(--ash);
+  font-size: 15px;
+  padding: 6px 2px 0;
+}
+.add-goal-empty a {
+  color: var(--t3);
+}
+
+/* Detail head: title + inline edit toggle. */
+.detail-title-row {
+  display: flex;
+  align-items: baseline;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+.detail-title-row .detail-title {
+  flex: 1 1 auto;
+}
+.edit-project-toggle {
+  flex: none;
+  font-size: 13px;
+  padding: 4px 10px;
+}
+.edit-project {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 6px;
+}
+.edit-project-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+/* The "belongs to a project" tag on a goal's detail page. */
+.project-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  align-self: flex-start;
+  font-family: var(--mono);
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  color: var(--ash);
+  text-decoration: none;
+  padding: 4px 11px;
+  border: 1px solid var(--iron-edge);
+  border-radius: 999px;
+  transition: color 0.12s ease, border-color 0.12s ease;
+}
+.project-tag:hover {
+  color: var(--chalk);
+  border-color: #5a4d40;
+}
+.project-tag:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+.project-tag-mark {
+  color: var(--t3);
+}
+
+@media (max-width: 560px) {
+  .add-goal {
+    flex-wrap: wrap;
+  }
+  .newproject {
+    min-width: 0;
+  }
+}
+
 /* ============ site footer ============ */
 /* A quiet readout at the base of every app page — the OS instrument layer, in mono,
    muted to --ash so it recedes. Aligned to the same 860px column as .wrap. */

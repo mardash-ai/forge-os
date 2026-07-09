@@ -7,6 +7,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.14.0] — 2026-07-09
+
+### Added
+
+- **Projects — group related Goals and roll up their heat (Epic A · A1).** A new **Project** resource
+  (`/projects` list + a `/projects/[id]` detail view) lets a user create a Project (title +
+  description), add/remove Goals, see an aggregate rollup of progress/heat across its member Goals, and
+  **archive** it. A Goal belongs to **at most one** Project. Gate 0 ruled this **fully app-local** — pure
+  domain reusing already-adopted capabilities (C10 auth, C11 ownership, C3 app-events); it forces **no**
+  new platform capability. Strengthens the *Organize* capability.
+- **Two additive, idempotent schema changes in `ensureSchema()`** (the house `CREATE TABLE IF NOT
+  EXISTS` / `ALTER TABLE … ADD COLUMN IF NOT EXISTS` pattern, re-run safe): a `projects` table
+  (`id, owner_id, title, description, status, created_at`) mirroring `goals` exactly, with an `owner_id`
+  index; and a nullable `goals.project_id uuid REFERENCES projects(id) ON DELETE SET NULL` with its own
+  index. Archiving/deleting a Project **never deletes its Goals** — the FK is nulled so the Goals survive
+  unaffiliated.
+- **Owner-scoped API routes** (all behind the C10/C11 gate; `force-dynamic`): `GET/POST /api/projects`,
+  `GET/PATCH /api/projects/[id]` (PATCH edits title/description **or** flips status active/archived),
+  `POST /api/projects/[id]/goals` (`{ goalId }`), and `DELETE /api/projects/[id]/goals/[goalId]`. Every
+  query filters `WHERE owner_id = $1`; a by-id fetch of another user's Project (or adding a Goal to a
+  Project you don't own) returns **404 (never 403)** so existence never leaks.
+- **A read-time task-weighted rollup** — aggregate progress across a Project's member Goals is
+  `sum(done) / sum(total)` of their tasks, reusing `lib/goals` `progressPercent` and rendered on the same
+  `lib/heat` Heat Bar as a single Goal (no new derivation engine; see `lib/projects.ts`).
+- **`project.*` timeline events (C3)** — `project.created`, `goal.added_to_project`, and
+  `project.archived` emit through the existing best-effort `emitAppEvent`; the Log routes them to
+  `/projects/<id>` via a new `eventHref` helper.
+- **UI in the "forge floor" aesthetic** — a `/projects` list + detail view with a rollup Heat Bar, a
+  segmented Active/Archived status control, an inline title/description edit, an add-a-goal picker and
+  per-Goal remove, a **Projects** entry in the mobile-safe primary nav, and a project chip on the Goal
+  detail page linking a Goal to its Project.
+- **Tests (+26; 89 → 115 total):** pure rollup logic (`lib/projects`), the new `project.*` describe/
+  spark/`eventHref` timeline cases, and a data-layer contract suite (`tests/projects.db.test.ts`, `pg` +
+  C3 mocked) proving schema idempotency, owner-scoping (cross-owner fetch → null → 404), archive nulls
+  `goals.project_id` without deleting Goals, and the `project.*` events fire.
+
 ## [0.13.0] — 2026-07-09
 
 ### Changed
@@ -704,7 +740,8 @@ _This changelog started mid-project: the Goals & Tasks core and the Timeline →
 Reminders → Planner Agent → Habits features predate it; see `PROJECT_IDEA.md`'s roadmap and the git
 history for that record._
 
-[Unreleased]: https://github.com/mardash-ai/forge-os/compare/v0.13.0...HEAD
+[Unreleased]: https://github.com/mardash-ai/forge-os/compare/v0.14.0...HEAD
+[0.14.0]: https://github.com/mardash-ai/forge-os/compare/v0.13.0...v0.14.0
 [0.13.0]: https://github.com/mardash-ai/forge-os/compare/v0.12.2...v0.13.0
 [0.12.2]: https://github.com/mardash-ai/forge-os/compare/v0.12.1...v0.12.2
 [0.12.1]: https://github.com/mardash-ai/forge-os/compare/v0.12.0...v0.12.1

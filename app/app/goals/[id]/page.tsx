@@ -28,6 +28,12 @@ export default async function GoalPage({ params }: { params: { id: string } }) {
 
       <div className="detail-head">
         <h1 className="detail-title">{goal.title}</h1>
+        {goal.projectId && goal.projectTitle ? (
+          <Link className="project-tag" href={`/projects/${goal.projectId}`}>
+            <span className="project-tag-mark" aria-hidden="true">◇</span>
+            {goal.projectTitle}
+          </Link>
+        ) : null}
         <div className="detail-meta">
           <StatusControl id={goal.id} status={goal.status} />
           <span className="readout big-readout">

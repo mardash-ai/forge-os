@@ -10,6 +10,9 @@ export interface Goal {
   title: string;
   description: string;
   status: GoalStatus;
+  /** The Project this Goal belongs to (A1), or null. A Goal belongs to ≤1 Project;
+   *  the FK is nulled (never cascade-deleted) when its Project is archived/deleted. */
+  projectId: string | null;
   createdAt: string;
 }
 
@@ -31,6 +34,9 @@ export interface GoalWithProgress extends Goal {
 
 export interface GoalWithTasks extends GoalWithProgress {
   tasks: Task[];
+  /** Title of the Project this Goal belongs to (A1), or null — for the detail chip.
+   *  Present only on a by-id fetch (getGoal), which joins the project. */
+  projectTitle: string | null;
 }
 
 /** Narrows an unknown value to a valid GoalStatus. */

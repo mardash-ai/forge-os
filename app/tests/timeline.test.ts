@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   describeEvent,
+  eventHref,
   formatTime,
   groupByDay,
   isWarm,
@@ -56,6 +57,44 @@ describe('sparkKind & isWarm', () => {
     expect(isWarm(ev({ type: 'goal.created' }))).toBe(false);
     expect(isWarm(ev({ type: 'task.added' }))).toBe(false);
     expect(isWarm(ev({ type: 'goal.status_changed', data: { to: 'archived' } }))).toBe(false);
+  });
+});
+
+describe('project events (A1)', () => {
+  it('describes each project.* event verb-led', () => {
+    expect(describeEvent(ev({ type: 'project.created', data: { projectTitle: 'Kitchen reno' } }))).toBe(
+      'Started “Kitchen reno”',
+    );
+    expect(
+      describeEvent(ev({ type: 'goal.added_to_project', data: { goalTitle: 'Pick tile', projectTitle: 'Kitchen reno' } })),
+    ).toBe('Added “Pick tile” to “Kitchen reno”');
+    expect(describeEvent(ev({ type: 'project.archived', data: { projectTitle: 'Kitchen reno' } }))).toBe(
+      'Archived “Kitchen reno”',
+    );
+  });
+
+  it('maps project.* events to reused sparks (none of them warm)', () => {
+    expect(sparkKind(ev({ type: 'project.created' }))).toBe('created');
+    expect(sparkKind(ev({ type: 'goal.added_to_project' }))).toBe('added');
+    expect(sparkKind(ev({ type: 'project.archived' }))).toBe('archived');
+    expect(isWarm(ev({ type: 'project.created' }))).toBe(false);
+    expect(isWarm(ev({ type: 'goal.added_to_project' }))).toBe(false);
+    expect(isWarm(ev({ type: 'project.archived' }))).toBe(false);
+  });
+});
+
+describe('eventHref', () => {
+  it('routes project.* events (subject = projectId) to /projects/<id>', () => {
+    expect(eventHref(ev({ type: 'project.created', goalId: 'p1' }))).toBe('/projects/p1');
+    expect(eventHref(ev({ type: 'goal.added_to_project', goalId: 'p1' }))).toBe('/projects/p1');
+    expect(eventHref(ev({ type: 'project.archived', goalId: 'p1' }))).toBe('/projects/p1');
+  });
+
+  it('routes goal/task events to /goals/<id> and a subject-less event to the floor', () => {
+    expect(eventHref(ev({ type: 'task.completed', goalId: 'g1' }))).toBe('/goals/g1');
+    expect(eventHref(ev({ type: 'goal.created', goalId: 'g1' }))).toBe('/goals/g1');
+    // Built directly (the ev() helper coalesces a null goalId to 'g1').
+    expect(eventHref({ type: 'goal.created', goalId: null })).toBe('/');
   });
 });
 

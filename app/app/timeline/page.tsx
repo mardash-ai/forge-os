@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { listTimelineEvents } from '@/lib/forge-events';
 import { requireOwner } from '@/lib/auth';
-import { describeEvent, formatTime, groupByDay, isWarm, sparkKind } from '@/lib/timeline';
+import { describeEvent, eventHref, formatTime, groupByDay, isWarm, sparkKind } from '@/lib/timeline';
 import { SiteNav } from '@/app/components/SiteNav';
 
 export const dynamic = 'force-dynamic';
@@ -48,7 +48,7 @@ export default async function TimelinePage() {
                     <Link
                       key={event.id}
                       className="event"
-                      href={event.goalId ? `/goals/${event.goalId}` : '/'}
+                      href={eventHref(event)}
                       style={{ animationDelay: `${i * 45 + 120}ms` }}
                     >
                       <span className="rail-cell">

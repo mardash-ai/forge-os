@@ -8,15 +8,21 @@ export type EventType =
   | 'goal.created'
   | 'goal.status_changed'
   | 'task.added'
-  | 'task.completed';
+  | 'task.completed'
+  // A1 · Projects. `subject` is the projectId (see eventHref); the goal title rides
+  // in `data` for the added-to-project entry so the feed renders standalone.
+  | 'project.created'
+  | 'goal.added_to_project'
+  | 'project.archived';
 
 /** Denormalized snapshot stored with each event so the feed renders standalone.
- *  Under the C3 app event log, everything but the subject (=goalId) lives here,
- *  including the task id for task events. */
+ *  Under the C3 app event log, everything but the subject (=goalId, or projectId for
+ *  project.* events) lives here, including the task id for task events. */
 export interface EventData {
   goalTitle?: string;
   taskTitle?: string;
   taskId?: string | null;
+  projectTitle?: string;
   from?: GoalStatus;
   to?: GoalStatus;
 }
@@ -38,11 +44,15 @@ const WARM_KINDS: ReadonlySet<SparkKind> = new Set(['forged', 'completed', 'reop
 export function sparkKind(event: Pick<TimelineEvent, 'type' | 'data'>): SparkKind {
   switch (event.type) {
     case 'goal.created':
+    case 'project.created':
       return 'created';
     case 'task.added':
+    case 'goal.added_to_project':
       return 'added';
     case 'task.completed':
       return 'completed';
+    case 'project.archived':
+      return 'archived';
     case 'goal.status_changed':
       if (event.data.to === 'achieved') return 'forged';
       if (event.data.to === 'archived') return 'archived';
@@ -59,6 +69,7 @@ export function isWarm(event: Pick<TimelineEvent, 'type' | 'data'>): boolean {
 export function describeEvent(event: Pick<TimelineEvent, 'type' | 'data'>): string {
   const goal = event.data.goalTitle ?? 'a goal';
   const task = event.data.taskTitle ?? 'a task';
+  const project = event.data.projectTitle ?? 'a project';
   switch (event.type) {
     case 'goal.created':
       return `Created “${goal}”`;
@@ -66,10 +77,31 @@ export function describeEvent(event: Pick<TimelineEvent, 'type' | 'data'>): stri
       return `Added “${task}” to “${goal}”`;
     case 'task.completed':
       return `Completed “${task}”`;
+    case 'project.created':
+      return `Started “${project}”`;
+    case 'goal.added_to_project':
+      return `Added “${goal}” to “${project}”`;
+    case 'project.archived':
+      return `Archived “${project}”`;
     case 'goal.status_changed':
       if (event.data.to === 'achieved') return `Forged “${goal}”`;
       if (event.data.to === 'archived') return `Archived “${goal}”`;
       return `Reopened “${goal}”`;
+  }
+}
+
+/** Where an event links in the feed. Project events carry the projectId in `goalId`
+ *  (the platform `subject`), so they route to /projects/<id>; goal/task events route
+ *  to /goals/<id>; a subject-less event falls back to the floor. */
+export function eventHref(event: Pick<TimelineEvent, 'type' | 'goalId'>): string {
+  if (!event.goalId) return '/';
+  switch (event.type) {
+    case 'project.created':
+    case 'goal.added_to_project':
+    case 'project.archived':
+      return `/projects/${event.goalId}`;
+    default:
+      return `/goals/${event.goalId}`;
   }
 }
 

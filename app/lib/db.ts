@@ -5,6 +5,13 @@
 import { Pool } from 'pg';
 import type { Goal, GoalStatus, GoalWithProgress, GoalWithTasks, Task } from './goals';
 import { progressPercent } from './goals';
+import type {
+  Project,
+  ProjectStatus,
+  ProjectWithGoals,
+  ProjectWithRollup,
+} from './projects';
+import { rollupFromCounts, rollupProgress } from './projects';
 import { emitAppEvent, latestActivityBySubject } from './forge-events';
 import { bucketFor } from './schedule';
 import { computeStreak, dateOf, finalizeStreak, periodStart, type Cadence, type StreakInfo } from './habits';
@@ -112,6 +119,25 @@ function ensureSchema(): Promise<void> {
       CREATE INDEX IF NOT EXISTS habits_owner_id_idx ON habits (owner_id);
       CREATE INDEX IF NOT EXISTS habit_checkins_owner_id_idx ON habit_checkins (owner_id);
       CREATE INDEX IF NOT EXISTS habit_streak_breaks_owner_id_idx ON habit_streak_breaks (owner_id);
+      -- A1 · Projects. A Project groups related Goals and rolls up their progress/heat.
+      -- Mirrors the goals table exactly, owner-scoped identically (owner_id = the C10
+      -- session userId; every query filters WHERE owner_id = <session user>). Additive +
+      -- idempotent like the rest of ensureSchema (re-run safe).
+      CREATE TABLE IF NOT EXISTS projects (
+        id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+        owner_id text,
+        title text NOT NULL,
+        description text NOT NULL DEFAULT '',
+        status text NOT NULL DEFAULT 'active',
+        created_at timestamptz NOT NULL DEFAULT now()
+      );
+      CREATE INDEX IF NOT EXISTS projects_owner_id_idx ON projects (owner_id);
+      -- A Goal belongs to AT MOST ONE Project (nullable FK). ON DELETE SET NULL so
+      -- deleting a Project never deletes its Goals — the FK is nulled and the Goals
+      -- survive unaffiliated. (Archiving a Project nulls the FK explicitly too; see
+      -- setProjectStatus.) This runs AFTER the projects table exists so the ref resolves.
+      ALTER TABLE goals ADD COLUMN IF NOT EXISTS project_id uuid REFERENCES projects(id) ON DELETE SET NULL;
+      CREATE INDEX IF NOT EXISTS goals_project_id_idx ON goals (project_id);
     `)
     .then(() => undefined)
     .catch((err: unknown) => {
@@ -142,6 +168,7 @@ interface GoalRow {
   title: string;
   description: string;
   status: string;
+  project_id: string | null;
   created_at: Date;
 }
 interface TaskRow {
@@ -159,6 +186,7 @@ function mapGoal(r: GoalRow): Goal {
     title: r.title,
     description: r.description,
     status: r.status as GoalStatus,
+    projectId: r.project_id,
     createdAt: new Date(r.created_at).toISOString(),
   };
 }
@@ -173,7 +201,7 @@ function mapTask(r: TaskRow): Task {
   };
 }
 
-const GOAL_COLS = 'id, title, description, status, created_at';
+const GOAL_COLS = 'id, title, description, status, project_id, created_at';
 // due_date cast to text so pg returns "YYYY-MM-DD" instead of a tz-shifted Date.
 const TASK_COLS = 'id, goal_id, title, done, due_date::text AS due_date, created_at';
 
@@ -183,7 +211,7 @@ const TASK_COLS = 'id, goal_id, title, done, due_date::text AS due_date, created
 /** The owner's goals, newest first, each with derived progress. */
 export async function listGoals(owner: string): Promise<GoalWithProgress[]> {
   const rows = await query<GoalRow & { total: string; done: string }>(`
-    SELECT g.id, g.title, g.description, g.status, g.created_at,
+    SELECT g.id, g.title, g.description, g.status, g.project_id, g.created_at,
            COUNT(t.id) AS total,
            COUNT(t.id) FILTER (WHERE t.done) AS done
     FROM goals g
@@ -213,8 +241,13 @@ export async function createGoal(owner: string, title: string, description: stri
  *  unknown OR owned by another user (so a route maps it to a 404, never a 403). */
 export async function getGoal(owner: string, id: string): Promise<GoalWithTasks | null> {
   if (!isUuid(id)) return null;
-  const goalRows = await query<GoalRow>(
-    `SELECT ${GOAL_COLS} FROM goals WHERE id = $1 AND owner_id = $2`,
+  // LEFT JOIN the project so the detail can show/link its Project (A1) in one round-trip.
+  const goalRows = await query<GoalRow & { project_title: string | null }>(
+    `SELECT g.id, g.title, g.description, g.status, g.project_id, g.created_at,
+            p.title AS project_title
+     FROM goals g
+     LEFT JOIN projects p ON p.id = g.project_id
+     WHERE g.id = $1 AND g.owner_id = $2`,
     [id, owner],
   );
   if (goalRows.length === 0) return null;
@@ -230,6 +263,7 @@ export async function getGoal(owner: string, id: string): Promise<GoalWithTasks 
     done,
     progress: progressPercent(done, tasks.length),
     tasks,
+    projectTitle: goalRows[0].project_title,
   };
 }
 
@@ -241,7 +275,7 @@ export async function updateGoalStatus(owner: string, id: string, status: GoalSt
     `WITH before AS (SELECT id, status AS from_status FROM goals WHERE id = $1 AND owner_id = $3)
      UPDATE goals g SET status = $2 FROM before
      WHERE g.id = before.id
-     RETURNING g.id, g.title, g.description, g.status, g.created_at, before.from_status`,
+     RETURNING g.id, g.title, g.description, g.status, g.project_id, g.created_at, before.from_status`,
     [id, status, owner],
   );
   if (rows.length === 0) return null;
@@ -351,6 +385,187 @@ export async function listDueTasks(owner: string): Promise<DueTask[]> {
     dueDate: r.due_date,
     createdAt: new Date(r.created_at).toISOString(),
   }));
+}
+
+// ---- projects (A1 · group related goals + roll up their progress/heat) ----
+// Owner-scoped identically to goals/tasks/habits: every project row carries owner_id =
+// the session userId, and EVERY query filters WHERE owner_id = $1, so a project owned by
+// another user is simply absent (a by-id fetch of it is null → a 404, never a 403). A
+// Goal can only be added to a Project the same owner owns.
+
+interface ProjectRow {
+  id: string;
+  title: string;
+  description: string;
+  status: string;
+  created_at: Date;
+}
+function mapProject(r: ProjectRow): Project {
+  return {
+    id: r.id,
+    title: r.title,
+    description: r.description,
+    status: r.status === 'archived' ? 'archived' : 'active',
+    createdAt: new Date(r.created_at).toISOString(),
+  };
+}
+const PROJECT_COLS = 'id, title, description, status, created_at';
+
+/** The owner's projects, newest first, each with its aggregate rollup (goal count +
+ *  task-weighted progress across member goals). One grouped query; the rollup reuses
+ *  the pure `rollupFromCounts` so it can't disagree with per-goal progress. */
+export async function listProjects(owner: string): Promise<ProjectWithRollup[]> {
+  const rows = await query<ProjectRow & { goal_count: string; total: string; done: string }>(`
+    SELECT p.id, p.title, p.description, p.status, p.created_at,
+           COUNT(DISTINCT g.id) AS goal_count,
+           COUNT(t.id) AS total,
+           COUNT(t.id) FILTER (WHERE t.done) AS done
+    FROM projects p
+    LEFT JOIN goals g ON g.project_id = p.id AND g.owner_id = p.owner_id
+    LEFT JOIN tasks t ON t.goal_id = g.id
+    WHERE p.owner_id = $1
+    GROUP BY p.id
+    ORDER BY p.created_at DESC
+  `, [owner]);
+  return rows.map((r) => ({
+    ...mapProject(r),
+    ...rollupFromCounts(Number(r.goal_count), Number(r.done), Number(r.total)),
+  }));
+}
+
+export async function createProject(owner: string, title: string, description: string): Promise<ProjectWithRollup> {
+  const rows = await query<ProjectRow>(
+    `INSERT INTO projects (owner_id, title, description) VALUES ($1, $2, $3) RETURNING ${PROJECT_COLS}`,
+    [owner, title, description],
+  );
+  const project = mapProject(rows[0]);
+  await emitAppEvent({ owner, type: 'project.created', subject: project.id, data: { projectTitle: project.title } });
+  return { ...project, goalCount: 0, totalTasks: 0, doneTasks: 0, progress: 0 };
+}
+
+/** One of the OWNER's projects with its member goals (each with derived progress) and the
+ *  rollup across them, or null if the id is unknown OR owned by another user (→ 404). */
+export async function getProject(owner: string, id: string): Promise<ProjectWithGoals | null> {
+  if (!isUuid(id)) return null;
+  const projectRows = await query<ProjectRow>(
+    `SELECT ${PROJECT_COLS} FROM projects WHERE id = $1 AND owner_id = $2`,
+    [id, owner],
+  );
+  if (projectRows.length === 0) return null;
+  // Member goals with their own progress — same derivation as listGoals, filtered to
+  // this project (and owner). The aggregate is rolled up from these via the pure fn.
+  const goalRows = await query<GoalRow & { total: string; done: string }>(`
+    SELECT g.id, g.title, g.description, g.status, g.project_id, g.created_at,
+           COUNT(t.id) AS total,
+           COUNT(t.id) FILTER (WHERE t.done) AS done
+    FROM goals g
+    LEFT JOIN tasks t ON t.goal_id = g.id
+    WHERE g.project_id = $1 AND g.owner_id = $2
+    GROUP BY g.id
+    ORDER BY g.created_at DESC
+  `, [id, owner]);
+  const goals: GoalWithProgress[] = goalRows.map((r) => {
+    const total = Number(r.total);
+    const done = Number(r.done);
+    return { ...mapGoal(r), total, done, progress: progressPercent(done, total) };
+  });
+  return { ...mapProject(projectRows[0]), ...rollupProgress(goals), goals };
+}
+
+/** Edit a project's title/description (owner-scoped). Returns the updated project, or
+ *  null if the id is unknown or not the owner's. */
+export async function updateProject(
+  owner: string,
+  id: string,
+  fields: { title: string; description?: string },
+): Promise<Project | null> {
+  if (!isUuid(id)) return null;
+  const rows = await query<ProjectRow>(
+    `UPDATE projects SET title = $2, description = COALESCE($3, description)
+     WHERE id = $1 AND owner_id = $4 RETURNING ${PROJECT_COLS}`,
+    [id, fields.title, fields.description ?? null, owner],
+  );
+  return rows.length ? mapProject(rows[0]) : null;
+}
+
+/**
+ * Set a project's status (active/archived), owner-scoped. Returns the updated project,
+ * or null if the id is unknown or not the owner's.
+ *
+ * Archiving a Project NEVER deletes its Goals — it explicitly nulls goals.project_id so
+ * the Goals survive unaffiliated (the same detach the ON DELETE SET NULL FK does for a
+ * hard delete). Emits `project.archived` on the transition into archived.
+ */
+export async function setProjectStatus(owner: string, id: string, status: ProjectStatus): Promise<Project | null> {
+  if (!isUuid(id)) return null;
+  const rows = await query<ProjectRow & { from_status: string }>(
+    `WITH before AS (SELECT id, status AS from_status FROM projects WHERE id = $1 AND owner_id = $3)
+     UPDATE projects p SET status = $2 FROM before
+     WHERE p.id = before.id
+     RETURNING p.id, p.title, p.description, p.status, p.created_at, before.from_status`,
+    [id, status, owner],
+  );
+  if (rows.length === 0) return null;
+  const project = mapProject(rows[0]);
+  if (status === 'archived') {
+    // Detach member goals: null the FK so archiving/deleting a project leaves its goals intact.
+    await query(`UPDATE goals SET project_id = NULL WHERE project_id = $1 AND owner_id = $2`, [id, owner]);
+    if (rows[0].from_status !== 'archived') {
+      await emitAppEvent({ owner, type: 'project.archived', subject: project.id, data: { projectTitle: project.title } });
+    }
+  }
+  return project;
+}
+
+/** The owner's goals not yet in any Project — the candidates the picker offers to add.
+ *  Owner-scoped; newest first; id + title only. */
+export async function listAddableGoals(owner: string): Promise<Array<{ id: string; title: string }>> {
+  const rows = await query<{ id: string; title: string }>(
+    `SELECT id, title FROM goals WHERE owner_id = $1 AND project_id IS NULL ORDER BY created_at DESC`,
+    [owner],
+  );
+  return rows.map((r) => ({ id: r.id, title: r.title }));
+}
+
+/**
+ * Add one of the OWNER's goals to one of the OWNER's projects (sets goals.project_id).
+ * A Goal belongs to ≤1 Project, so this overwrites any prior membership. Returns the
+ * updated goal, or null if EITHER the project or the goal is unknown or not the owner's.
+ * Emits `goal.added_to_project` (subject = projectId).
+ */
+export async function addGoalToProject(owner: string, projectId: string, goalId: string): Promise<Goal | null> {
+  if (!isUuid(projectId) || !isUuid(goalId)) return null;
+  // The project must exist and be the owner's (a goal can only join a project they own).
+  const proj = await query<{ id: string; title: string }>(
+    `SELECT id, title FROM projects WHERE id = $1 AND owner_id = $2`,
+    [projectId, owner],
+  );
+  if (proj.length === 0) return null;
+  const rows = await query<GoalRow>(
+    `UPDATE goals SET project_id = $1 WHERE id = $2 AND owner_id = $3 RETURNING ${GOAL_COLS}`,
+    [projectId, goalId, owner],
+  );
+  if (rows.length === 0) return null;
+  const goal = mapGoal(rows[0]);
+  await emitAppEvent({
+    owner,
+    type: 'goal.added_to_project',
+    subject: projectId,
+    data: { goalTitle: goal.title, projectTitle: proj[0].title },
+  });
+  return goal;
+}
+
+/** Remove a goal from a project (nulls goals.project_id) — owner-scoped and only if the
+ *  goal is actually in THIS project. False if unknown, malformed, or not the owner's. */
+export async function removeGoalFromProject(owner: string, projectId: string, goalId: string): Promise<boolean> {
+  if (!isUuid(projectId) || !isUuid(goalId)) return false;
+  const rows = await query<{ id: string }>(
+    `UPDATE goals SET project_id = NULL
+     WHERE id = $1 AND project_id = $2 AND owner_id = $3 RETURNING id`,
+    [goalId, projectId, owner],
+  );
+  return rows.length > 0;
 }
 
 // ---- notifications (derived; the platform store owns dismiss/clear — capability C4) ----
