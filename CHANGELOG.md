@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.15.1] — 2026-07-09
+
+### Changed
+
+- **Adopt forge `0.24.1` — the `forge release` pipeline resolves the app on a store-less box (P19).**
+  Bump the control-plane pin (`FORGE_IMAGE` in `compose.yaml`) → `forge-control-plane:0.24.1@sha256:b254f9e2…`,
+  multi-arch (amd64+arm64), digest-pinned (R1). `0.24.1` fixes **P19**: `forge release` — and the
+  `forge productionize` (repin) + `forge verify` (gate) it composes — now resolve the app leniently from
+  `app/forge.app.json` (single-layout inference, the way `forge deploy` always did) instead of requiring a
+  registered Application in the control-plane store, so a real non-dry-run release runs on the production
+  box (which was provisioned via `forge deploy`/`productionize` and never had `forge init app` run — its
+  store had no `forge-os` Application, so `0.23.0`'s `forge release` aborted at `assess` with
+  `not_found`). No box mutation needed. The data-plane pin is **unchanged**
+  (`forge-data-plane:0.22.0@sha256:9de9a8a0…`) — this is a control-plane CLI bump and the batch it ships
+  (mobile nav fix + the `make deploy`→`forge release` adoption + A1 Projects + A2 Areas) is **web-only**,
+  so no data-plane roll and no session churn (no user logout).
+
 ## [0.15.0] — 2026-07-09
 
 ### Added
@@ -772,7 +789,8 @@ _This changelog started mid-project: the Goals & Tasks core and the Timeline →
 Reminders → Planner Agent → Habits features predate it; see `PROJECT_IDEA.md`'s roadmap and the git
 history for that record._
 
-[Unreleased]: https://github.com/mardash-ai/forge-os/compare/v0.15.0...HEAD
+[Unreleased]: https://github.com/mardash-ai/forge-os/compare/v0.15.1...HEAD
+[0.15.1]: https://github.com/mardash-ai/forge-os/compare/v0.15.0...v0.15.1
 [0.15.0]: https://github.com/mardash-ai/forge-os/compare/v0.14.0...v0.15.0
 [0.14.0]: https://github.com/mardash-ai/forge-os/compare/v0.13.0...v0.14.0
 [0.13.0]: https://github.com/mardash-ai/forge-os/compare/v0.12.2...v0.13.0
