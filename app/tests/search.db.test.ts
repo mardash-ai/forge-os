@@ -55,6 +55,7 @@ const TID = '33333333-3333-3333-3333-333333333333';
 const PID = '11111111-1111-1111-1111-111111111111';
 const AID = '44444444-4444-4444-4444-444444444444';
 const HID = '55555555-5555-5555-5555-555555555555';
+const NID = '66666666-6666-6666-6666-666666666666';
 
 function dataCalls() {
   return hoisted.calls.filter((c) => !c.text.includes('CREATE TABLE IF NOT EXISTS'));
@@ -183,17 +184,18 @@ describe('collectSearchDocs — owner-scoped backfill', () => {
       if (t.includes('FROM projects WHERE owner_id = $1')) return [{ id: PID, title: 'P', description: '', status: 'active', area_id: null, created_at: new Date() }];
       if (t.includes('FROM areas WHERE owner_id = $1')) return [{ id: AID, name: 'A', color: '', created_at: new Date() }];
       if (t.includes('FROM habits WHERE owner_id = $1')) return [{ id: HID, title: 'H', cadence: 'daily', area_id: null, created_at: new Date() }];
+      if (t.includes('FROM documents WHERE owner_id = $1')) return [{ id: NID, title: 'N', body_md: 'nb', goal_id: null, project_id: null, created_at: new Date(), updated_at: new Date() }];
       return [];
     };
     const docs = await collectSearchDocs(OWNER);
 
     // Every collector query is owner-scoped to the caller.
-    for (const table of ['FROM goals WHERE owner_id = $1', 'FROM tasks WHERE owner_id = $1', 'FROM projects WHERE owner_id = $1', 'FROM areas WHERE owner_id = $1', 'FROM habits WHERE owner_id = $1']) {
+    for (const table of ['FROM goals WHERE owner_id = $1', 'FROM tasks WHERE owner_id = $1', 'FROM projects WHERE owner_id = $1', 'FROM areas WHERE owner_id = $1', 'FROM habits WHERE owner_id = $1', 'FROM documents WHERE owner_id = $1']) {
       expect(find(table)!.params).toEqual([OWNER]);
     }
 
     // One doc per kind, each carrying the caller's owner and its type/id.
-    expect(docs).toHaveLength(5);
+    expect(docs).toHaveLength(6);
     expect(docs.every((d) => d.owner === OWNER)).toBe(true);
     expect(docs.map((d) => `${d.type}:${d.id}`)).toEqual([
       `goal:${GID}`,
@@ -201,6 +203,7 @@ describe('collectSearchDocs — owner-scoped backfill', () => {
       `project:${PID}`,
       `area:${AID}`,
       `habit:${HID}`,
+      `note:${NID}`,
     ]);
   });
 });

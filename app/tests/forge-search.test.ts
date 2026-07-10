@@ -160,6 +160,7 @@ describe('typeLabel', () => {
     expect(typeLabel('project')).toBe('Project');
     expect(typeLabel('area')).toBe('Area');
     expect(typeLabel('habit')).toBe('Habit');
+    expect(typeLabel('note')).toBe('Note');
   });
 });
 
@@ -179,6 +180,9 @@ describe('hitHref — where a hit links', () => {
   it('area → /areas, habit → /habits (no detail pages)', () => {
     expect(hitHref({ type: 'area', id: 'a1' })).toBe('/areas');
     expect(hitHref({ type: 'habit', id: 'h1' })).toBe('/habits');
+  });
+  it('note → /notes/<id>', () => {
+    expect(hitHref({ type: 'note', id: 'n1' })).toBe('/notes/n1');
   });
 });
 

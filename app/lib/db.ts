@@ -13,8 +13,15 @@ import type {
 } from './projects';
 import { rollupFromCounts, rollupProgress } from './projects';
 import type { Area, AreaOption, AreaWithCounts, TaggableKind } from './areas';
+import type {
+  Document,
+  DocumentAttachment,
+  DocumentSummary,
+  DocumentWithAttachments,
+} from './documents';
 import { emitAppEvent, latestActivityBySubject } from './forge-events';
 import { deleteDoc, indexDoc, type IndexDoc } from './forge-search';
+import { deleteBlob } from './forge-blobs';
 import { bucketFor } from './schedule';
 import { computeStreak, dateOf, finalizeStreak, periodStart, type Cadence, type StreakInfo } from './habits';
 import {
@@ -162,6 +169,40 @@ function ensureSchema(): Promise<void> {
       CREATE INDEX IF NOT EXISTS goals_area_id_idx ON goals (area_id);
       CREATE INDEX IF NOT EXISTS habits_area_id_idx ON habits (area_id);
       CREATE INDEX IF NOT EXISTS projects_area_id_idx ON projects (area_id);
+      -- B1 · Notes / Documents (the C20 blob-storage consumer). A Document is a markdown note,
+      -- optionally linked to a Goal and/or a Project. Owner-scoped identically to the rest
+      -- (owner_id = the C10 session userId; every query filters WHERE owner_id = <session user>).
+      -- Additive + idempotent like the rest of ensureSchema. Runs AFTER goals + projects exist so
+      -- the FKs resolve; both links ON DELETE SET NULL, so deleting the goal/project keeps the note.
+      CREATE TABLE IF NOT EXISTS documents (
+        id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+        owner_id text,
+        title text NOT NULL,
+        body_md text NOT NULL DEFAULT '',
+        goal_id uuid REFERENCES goals(id) ON DELETE SET NULL,
+        project_id uuid REFERENCES projects(id) ON DELETE SET NULL,
+        created_at timestamptz NOT NULL DEFAULT now(),
+        updated_at timestamptz NOT NULL DEFAULT now()
+      );
+      CREATE INDEX IF NOT EXISTS documents_owner_id_idx ON documents (owner_id);
+      CREATE INDEX IF NOT EXISTS documents_goal_id_idx ON documents (goal_id);
+      CREATE INDEX IF NOT EXISTS documents_project_id_idx ON documents (project_id);
+      -- Attachments: a file stored in the platform blob store (C20). We persist only the returned
+      -- blob_id + metadata; the BYTES live in the platform. ON DELETE CASCADE so deleting a note
+      -- removes its attachment rows (the platform blobs are best-effort deleted in deleteDocument).
+      -- owner_id mirrors the note's owner (children inherit their parent's owner).
+      CREATE TABLE IF NOT EXISTS document_attachments (
+        id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+        document_id uuid NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
+        owner_id text,
+        blob_id text NOT NULL,
+        filename text NOT NULL DEFAULT '',
+        content_type text NOT NULL DEFAULT '',
+        size int NOT NULL DEFAULT 0,
+        created_at timestamptz NOT NULL DEFAULT now()
+      );
+      CREATE INDEX IF NOT EXISTS document_attachments_document_id_idx ON document_attachments (document_id);
+      CREATE INDEX IF NOT EXISTS document_attachments_owner_id_idx ON document_attachments (owner_id);
     `)
     .then(() => undefined)
     .catch((err: unknown) => {
@@ -194,6 +235,20 @@ export async function pingDb(): Promise<void> {
  * unexpected throw, so a search-index hiccup can't turn a real write into a 500.
  */
 function indexBestEffort(p: Promise<void>): Promise<void> {
+  return p.then(
+    () => undefined,
+    () => undefined,
+  );
+}
+
+/**
+ * Fire a best-effort platform blob delete (capability C20) alongside a row delete. Like the
+ * search index, a failed blob delete must NEVER break the row delete that triggered it — the
+ * forge-blobs client already swallows network errors, and this guard also absorbs an unexpected
+ * throw, so a blob-store hiccup can't turn a real delete into a 500. (The row is already gone;
+ * an orphaned blob is a tolerable, sweepable leftover.)
+ */
+function blobBestEffort(p: Promise<boolean>): Promise<void> {
   return p.then(
     () => undefined,
     () => undefined,
@@ -256,6 +311,18 @@ function habitDoc(owner: string, habit: Habit): IndexDoc {
     title: habit.title,
     attrs: { cadence: habit.cadence, areaId: habit.areaId },
     created_at: habit.createdAt,
+  };
+}
+function noteDoc(owner: string, doc: Document): IndexDoc {
+  return {
+    owner,
+    type: 'note',
+    id: doc.id,
+    title: doc.title,
+    body: doc.bodyMd,
+    attrs: { goalId: doc.goalId, projectId: doc.projectId },
+    created_at: doc.createdAt,
+    updated_at: doc.updatedAt,
   };
 }
 
@@ -677,6 +744,26 @@ export async function setProjectStatus(owner: string, id: string, status: Projec
   return project;
 }
 
+/** The owner's goals as lightweight options (id + title), newest first — for the note link
+ *  picker (B1). Owner-scoped. */
+export async function listGoalOptions(owner: string): Promise<Array<{ id: string; title: string }>> {
+  const rows = await query<{ id: string; title: string }>(
+    `SELECT id, title FROM goals WHERE owner_id = $1 ORDER BY created_at DESC`,
+    [owner],
+  );
+  return rows.map((r) => ({ id: r.id, title: r.title }));
+}
+
+/** The owner's projects as lightweight options (id + title), newest first — for the note link
+ *  picker (B1). Owner-scoped. */
+export async function listProjectOptions(owner: string): Promise<Array<{ id: string; title: string }>> {
+  const rows = await query<{ id: string; title: string }>(
+    `SELECT id, title FROM projects WHERE owner_id = $1 ORDER BY created_at DESC`,
+    [owner],
+  );
+  return rows.map((r) => ({ id: r.id, title: r.title }));
+}
+
 /** The owner's goals not yet in any Project — the candidates the picker offers to add.
  *  Owner-scoped; newest first; id + title only. */
 export async function listAddableGoals(owner: string): Promise<Array<{ id: string; title: string }>> {
@@ -937,6 +1024,245 @@ export async function setProjectArea(owner: string, projectId: string, areaId: s
   return project;
 }
 
+// ---- documents / notes (B1 · markdown notes + C20 blob attachments) ----
+// Owner-scoped identically to the rest: every documents / document_attachments row carries
+// owner_id = the session userId, and EVERY query filters WHERE owner_id = $1, so a note (or an
+// attachment) owned by another user is simply absent (a by-id fetch of it is null → a 404, never
+// a 403). A note can only link to a Goal / Project the SAME owner owns. The attachment BYTES live
+// in the platform blob store (C20); the app persists only the returned blob_id + metadata.
+
+interface DocumentRow {
+  id: string;
+  title: string;
+  body_md: string;
+  goal_id: string | null;
+  project_id: string | null;
+  created_at: Date;
+  updated_at: Date;
+}
+interface AttachmentRow {
+  id: string;
+  document_id: string;
+  blob_id: string;
+  filename: string;
+  content_type: string;
+  size: number;
+  created_at: Date;
+}
+function mapDocument(r: DocumentRow): Document {
+  return {
+    id: r.id,
+    title: r.title,
+    bodyMd: r.body_md,
+    goalId: r.goal_id,
+    projectId: r.project_id,
+    createdAt: new Date(r.created_at).toISOString(),
+    updatedAt: new Date(r.updated_at).toISOString(),
+  };
+}
+function mapAttachment(r: AttachmentRow): DocumentAttachment {
+  return {
+    id: r.id,
+    documentId: r.document_id,
+    blobId: r.blob_id,
+    filename: r.filename,
+    contentType: r.content_type,
+    size: Number(r.size),
+    createdAt: new Date(r.created_at).toISOString(),
+  };
+}
+const DOC_COLS = 'id, title, body_md, goal_id, project_id, created_at, updated_at';
+const ATTACHMENT_COLS = 'id, document_id, blob_id, filename, content_type, size, created_at';
+
+/** Validate an optional Goal/Project link on a note: the id must be owned by the caller. Returns
+ *  `{ ok: true }` when the link is absent/null or owned; `{ ok: false }` when it's malformed or
+ *  someone else's (so the note create/update refuses rather than link across owners). */
+async function linkOwned(
+  owner: string,
+  table: 'goals' | 'projects',
+  id: string | null | undefined,
+): Promise<boolean> {
+  if (id === null || id === undefined) return true;
+  if (!isUuid(id)) return false;
+  const rows = await query<{ id: string }>(`SELECT id FROM ${table} WHERE id = $1 AND owner_id = $2`, [id, owner]);
+  return rows.length > 0;
+}
+
+/** The owner's notes, most-recently-updated first, each with its link titles + attachment count
+ *  — the /notes list row. One grouped query; COUNT over the LEFT-JOINed attachments. */
+export async function listDocuments(owner: string): Promise<DocumentSummary[]> {
+  const rows = await query<
+    DocumentRow & { goal_title: string | null; project_title: string | null; attachment_count: string }
+  >(`
+    SELECT d.id, d.title, d.body_md, d.goal_id, d.project_id, d.created_at, d.updated_at,
+           g.title AS goal_title, p.title AS project_title,
+           COUNT(a.id) AS attachment_count
+    FROM documents d
+    LEFT JOIN goals g ON g.id = d.goal_id AND g.owner_id = d.owner_id
+    LEFT JOIN projects p ON p.id = d.project_id AND p.owner_id = d.owner_id
+    LEFT JOIN document_attachments a ON a.document_id = d.id
+    WHERE d.owner_id = $1
+    GROUP BY d.id, g.title, p.title
+    ORDER BY d.updated_at DESC
+  `, [owner]);
+  return rows.map((r) => ({
+    ...mapDocument(r),
+    attachmentCount: Number(r.attachment_count),
+    goalTitle: r.goal_title,
+    projectTitle: r.project_title,
+  }));
+}
+
+/**
+ * Create a note (owner-scoped). Optional Goal/Project links are validated to be the caller's
+ * own (a foreign/malformed link → null, so the route 400/404s rather than link across owners).
+ * Emits `document.created` and makes the note searchable (title + body, type `note`, C19).
+ * Returns the new note with an empty attachments list + its link titles.
+ */
+export async function createDocument(
+  owner: string,
+  input: { title: string; bodyMd: string; goalId?: string | null; projectId?: string | null },
+): Promise<DocumentWithAttachments | null> {
+  if (!(await linkOwned(owner, 'goals', input.goalId))) return null;
+  if (!(await linkOwned(owner, 'projects', input.projectId))) return null;
+  const rows = await query<DocumentRow>(
+    `INSERT INTO documents (owner_id, title, body_md, goal_id, project_id)
+     VALUES ($1, $2, $3, $4, $5) RETURNING ${DOC_COLS}`,
+    [owner, input.title, input.bodyMd, input.goalId ?? null, input.projectId ?? null],
+  );
+  const doc = mapDocument(rows[0]);
+  await emitAppEvent({ owner, type: 'document.created', subject: doc.id, data: { documentTitle: doc.title } });
+  // C19 · make the new note searchable (title + body). Best-effort: never blocks the write.
+  await indexBestEffort(indexDoc(noteDoc(owner, doc)));
+  const [goalTitle, projectTitle] = await Promise.all([
+    linkTitle(owner, 'goals', doc.goalId),
+    linkTitle(owner, 'projects', doc.projectId),
+  ]);
+  return { ...doc, attachments: [], goalTitle, projectTitle };
+}
+
+/** The title of the owner's linked goal/project (for the note's chips), or null. */
+async function linkTitle(owner: string, table: 'goals' | 'projects', id: string | null): Promise<string | null> {
+  if (!id || !isUuid(id)) return null;
+  const rows = await query<{ title: string }>(`SELECT title FROM ${table} WHERE id = $1 AND owner_id = $2`, [id, owner]);
+  return rows.length ? rows[0].title : null;
+}
+
+/** One of the OWNER's notes with its attachments (oldest first) + link titles, or null if the
+ *  id is unknown OR owned by another user (→ 404). */
+export async function getDocument(owner: string, id: string): Promise<DocumentWithAttachments | null> {
+  if (!isUuid(id)) return null;
+  const docRows = await query<DocumentRow & { goal_title: string | null; project_title: string | null }>(
+    `SELECT d.id, d.title, d.body_md, d.goal_id, d.project_id, d.created_at, d.updated_at,
+            g.title AS goal_title, p.title AS project_title
+     FROM documents d
+     LEFT JOIN goals g ON g.id = d.goal_id AND g.owner_id = d.owner_id
+     LEFT JOIN projects p ON p.id = d.project_id AND p.owner_id = d.owner_id
+     WHERE d.id = $1 AND d.owner_id = $2`,
+    [id, owner],
+  );
+  if (docRows.length === 0) return null;
+  const attachmentRows = await query<AttachmentRow>(
+    `SELECT ${ATTACHMENT_COLS} FROM document_attachments WHERE document_id = $1 AND owner_id = $2 ORDER BY created_at ASC`,
+    [id, owner],
+  );
+  return {
+    ...mapDocument(docRows[0]),
+    attachments: attachmentRows.map(mapAttachment),
+    goalTitle: docRows[0].goal_title,
+    projectTitle: docRows[0].project_title,
+  };
+}
+
+/**
+ * Update a note's content + links (owner-scoped), bumping `updated_at`. Links are validated to
+ * be the caller's own (foreign/malformed → null, so the route refuses). Re-indexes the note
+ * (title + body changed; idempotent upsert, C19). Returns the updated note, or null if the id is
+ * unknown / not the owner's, or a link isn't theirs.
+ */
+export async function updateDocument(
+  owner: string,
+  id: string,
+  input: { title: string; bodyMd: string; goalId?: string | null; projectId?: string | null },
+): Promise<Document | null> {
+  if (!isUuid(id)) return null;
+  if (!(await linkOwned(owner, 'goals', input.goalId))) return null;
+  if (!(await linkOwned(owner, 'projects', input.projectId))) return null;
+  const rows = await query<DocumentRow>(
+    `UPDATE documents
+     SET title = $2, body_md = $3, goal_id = $4, project_id = $5, updated_at = now()
+     WHERE id = $1 AND owner_id = $6 RETURNING ${DOC_COLS}`,
+    [id, input.title, input.bodyMd, input.goalId ?? null, input.projectId ?? null, owner],
+  );
+  if (rows.length === 0) return null;
+  const doc = mapDocument(rows[0]);
+  await indexBestEffort(indexDoc(noteDoc(owner, doc)));
+  return doc;
+}
+
+/**
+ * Delete one of the OWNER's notes. Its attachment ROWS cascade away; the corresponding platform
+ * BLOBS (C20) and the search doc (C19) are best-effort removed after. False if the id is unknown,
+ * malformed, or owned by another user.
+ */
+export async function deleteDocument(owner: string, id: string): Promise<boolean> {
+  if (!isUuid(id)) return false;
+  // Capture the blob ids first (owner-scoped) so we can drop the bytes from the platform after
+  // the cascade removes the rows.
+  const atts = await query<{ blob_id: string }>(
+    `SELECT blob_id FROM document_attachments WHERE document_id = $1 AND owner_id = $2`,
+    [id, owner],
+  );
+  const del = await query<{ id: string }>(`DELETE FROM documents WHERE id = $1 AND owner_id = $2 RETURNING id`, [id, owner]);
+  if (del.length === 0) return false;
+  // The note is gone (rows cascaded). Best-effort clean up the platform blobs + the search doc.
+  for (const a of atts) await blobBestEffort(deleteBlob({ owner, id: a.blob_id }));
+  await indexBestEffort(deleteDoc({ owner, type: 'note', id }));
+  return true;
+}
+
+/**
+ * Record an uploaded attachment on one of the OWNER's notes (the blob is already stored in the
+ * platform — the route uploaded it first and passes the returned metadata here). Verifies the
+ * note is the owner's; the row inherits the note's owner. Returns the attachment, or null if the
+ * note is unknown / not theirs.
+ */
+export async function addAttachment(
+  owner: string,
+  documentId: string,
+  input: { blobId: string; filename: string; contentType: string; size: number },
+): Promise<DocumentAttachment | null> {
+  if (!isUuid(documentId)) return null;
+  const doc = await query<{ id: string }>(`SELECT id FROM documents WHERE id = $1 AND owner_id = $2`, [documentId, owner]);
+  if (doc.length === 0) return null;
+  const rows = await query<AttachmentRow>(
+    `INSERT INTO document_attachments (document_id, owner_id, blob_id, filename, content_type, size)
+     VALUES ($1, $2, $3, $4, $5, $6) RETURNING ${ATTACHMENT_COLS}`,
+    [documentId, owner, input.blobId, input.filename, input.contentType, input.size],
+  );
+  // Touch the note so an attachment change moves it up the recently-updated list.
+  await query(`UPDATE documents SET updated_at = now() WHERE id = $1 AND owner_id = $2`, [documentId, owner]);
+  return mapAttachment(rows[0]);
+}
+
+/**
+ * Delete one attachment from one of the OWNER's notes: removes the row (scoped to owner + note)
+ * and best-effort drops the platform blob (C20). False if the attachment is unknown, malformed,
+ * or not the owner's / not on that note.
+ */
+export async function deleteAttachment(owner: string, documentId: string, attachmentId: string): Promise<boolean> {
+  if (!isUuid(documentId) || !isUuid(attachmentId)) return false;
+  const rows = await query<{ blob_id: string }>(
+    `DELETE FROM document_attachments
+     WHERE id = $1 AND document_id = $2 AND owner_id = $3 RETURNING blob_id`,
+    [attachmentId, documentId, owner],
+  );
+  if (rows.length === 0) return false;
+  await blobBestEffort(deleteBlob({ owner, id: rows[0].blob_id }));
+  await query(`UPDATE documents SET updated_at = now() WHERE id = $1 AND owner_id = $2`, [documentId, owner]);
+  return true;
+}
+
 // ---- notifications (derived; the platform store owns dismiss/clear — capability C4) ----
 
 /** Active goals whose last activity (latest app event, else creation) is older than
@@ -1186,12 +1512,13 @@ export async function finalizeHabitStreaks(now: Date): Promise<StreakBreak[]> {
 // index documents, so rows that predate live indexing become searchable too. Read-only; the
 // route hands the result to reindexDocs() (capability C19) for a bulk upsert.
 export async function collectSearchDocs(owner: string): Promise<IndexDoc[]> {
-  const [goals, tasks, projects, areas, habits] = await Promise.all([
+  const [goals, tasks, projects, areas, habits, documents] = await Promise.all([
     query<GoalRow>(`SELECT ${GOAL_COLS} FROM goals WHERE owner_id = $1`, [owner]),
     query<TaskRow>(`SELECT ${TASK_COLS} FROM tasks WHERE owner_id = $1`, [owner]),
     query<ProjectRow>(`SELECT ${PROJECT_COLS} FROM projects WHERE owner_id = $1`, [owner]),
     query<AreaRow>(`SELECT ${AREA_COLS} FROM areas WHERE owner_id = $1`, [owner]),
     query<HabitRow>(`SELECT id, title, cadence, area_id, created_at FROM habits WHERE owner_id = $1`, [owner]),
+    query<DocumentRow>(`SELECT ${DOC_COLS} FROM documents WHERE owner_id = $1`, [owner]),
   ]);
   return [
     ...goals.map((r) => goalDoc(owner, mapGoal(r))),
@@ -1199,5 +1526,6 @@ export async function collectSearchDocs(owner: string): Promise<IndexDoc[]> {
     ...projects.map((r) => projectDoc(owner, mapProject(r))),
     ...areas.map((r) => areaDoc(owner, mapArea(r))),
     ...habits.map((r) => habitDoc(owner, mapHabit(r))),
+    ...documents.map((r) => noteDoc(owner, mapDocument(r))),
   ];
 }

@@ -7,6 +7,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.18.0] — 2026-07-10
+
+### Added
+
+- **B1 · Notes / Documents — the first C20 (blob storage) consumer.** A markdown "second brain":
+  create/list/edit/delete notes, attach files, and link a note to a Goal and/or Project. Owner-scoped
+  end-to-end (every query filters `owner_id`; a cross-owner note or attachment is a **404, never a 403**).
+  - **Persisted state.** Additive, idempotent `ensureSchema()` adds `documents(id, owner_id, title,
+    body_md, goal_id → goals ON DELETE SET NULL, project_id → projects ON DELETE SET NULL, created_at,
+    updated_at)` + owner/goal/project indexes, and `document_attachments(id, document_id → documents
+    ON DELETE CASCADE, owner_id, blob_id, filename, content_type, size, created_at)` + indexes. Deleting
+    a linked Goal/Project keeps the note (the FK is nulled); deleting a note cascades its attachment rows.
+  - **Blob-storage client (`lib/forge-blobs.ts`).** A C20 client mirroring the C3/C4/C19 clients (same
+    `FORGE_EVENTS_URL` base, same `app`-only-when-`FORGE_APP_NAME` rule): `uploadBlob` (app-proxied
+    multipart `POST /blobs`, returns a discriminated result), `getBlobResponse` (owner-scoped serve
+    source), `deleteBlob` (best-effort owner-scoped delete). Never throws.
+  - **Attachments (the C20 wiring).** `POST /api/documents/[id]/attachments` validates size (≤ 15 MB) +
+    type (images `png/jpeg/webp/gif`, docs `pdf/plain/markdown`) app-side, streams the file to the
+    platform `POST /blobs` (owner = session `userId`), and records the returned `blob_id` + metadata.
+    `GET /api/blobs/[id]` is an **auth-checked serve proxy** — `requireOwner()` then stream from the
+    data-plane `GET /blobs/:id?owner=<userId>` (cross-owner → 404). `DELETE …/attachments/[attachmentId]`
+    removes the row + best-effort drops the blob. Images render inline; docs download.
+  - **Notes indexed into Global Search (C19).** Notes are indexed (`type: note`, title + body) on
+    create/updated on edit/removed on delete, and included in the `reindex` backfill, so they surface in
+    `/search` (a `Notes` type filter was added). Best-effort — a search-index hiccup never breaks a note write.
+  - **UI.** `/notes` (list with excerpt + attachment/link chips) and `/notes/[id]` (a markdown editor with
+    a **live rendered preview**, Goal/Project link pickers, and the attachment manager), in the forge-floor
+    aesthetic and gated behind `requireOwner()`. A `document.created` C3 timeline event surfaces new notes
+    in the Log. A new nav entry (`Notes`).
+  - **Safe markdown (`lib/markdown.ts` + `Markdown`).** A small, dependency-free markdown subset rendered to
+    **React nodes (never `dangerouslySetInnerHTML`)**; link hrefs are validated against a scheme allowlist
+    (`safeHref`), so a note body can't inject active markup (XSS-safe by construction, like `parseSnippet`).
+
 ## [0.17.0] — 2026-07-09
 
 ### Added
@@ -951,7 +984,8 @@ _This changelog started mid-project: the Goals & Tasks core and the Timeline →
 Reminders → Planner Agent → Habits features predate it; see `PROJECT_IDEA.md`'s roadmap and the git
 history for that record._
 
-[Unreleased]: https://github.com/mardash-ai/forge-os/compare/v0.17.0...HEAD
+[Unreleased]: https://github.com/mardash-ai/forge-os/compare/v0.18.0...HEAD
+[0.18.0]: https://github.com/mardash-ai/forge-os/compare/v0.17.0...v0.18.0
 [0.17.0]: https://github.com/mardash-ai/forge-os/compare/v0.16.0...v0.17.0
 [0.16.0]: https://github.com/mardash-ai/forge-os/compare/v0.15.6...v0.16.0
 [0.15.6]: https://github.com/mardash-ai/forge-os/compare/v0.15.5...v0.15.6

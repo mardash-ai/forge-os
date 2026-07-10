@@ -24,6 +24,7 @@ const TYPE_OPTIONS: { value: SearchType; label: string }[] = [
   { value: 'goal', label: 'Goals' },
   { value: 'project', label: 'Projects' },
   { value: 'task', label: 'Tasks' },
+  { value: 'note', label: 'Notes' },
   { value: 'area', label: 'Areas' },
   { value: 'habit', label: 'Habits' },
 ];

@@ -61,7 +61,7 @@ The three catalogs below are annotated with live status. Legend: ✅ built · �
 | **User / Account** | ✅ v0.7 | identity **shipped** (C10, `0.6.0`) **and** per-user *ownership* **shipped** — every resource is owner-scoped and users are fully isolated (§5 Epic M · M2 / C11, adopted `0.7.0`) |
 | **Project** | ✅ v5 | group related Goals + roll up task-weighted progress/heat across members; add/remove goals; archive (goals survive — the FK is nulled). Owner-scoped like every resource. Shipped `0.14.0` |
 | **Area** | ✅ v6 | a user-defined **life domain** (Health/Career/Finance/…); tag a Goal, Habit, or Project to ≤1 Area, then **filter every list view** by it. Deleting an Area keeps the tagged resources (the FK is nulled). Owner-scoped like every resource. Shipped `0.15.0` |
-| **Document / Note** | ⬜ | the "second brain" surface (§5 Epic B) |
+| **Document / Note** | ✅ v7 | markdown notes with **file attachments on the platform blob store (C20)**; linkable to a Goal/Project (FK nulled, never cascade-deleted); indexed into C19 Global Search. Owner-scoped. Shipped `0.18.0` (§5 Epic B · B1) |
 | **Idea** | ⬜ | lightweight capture, promotable to Goal/Task |
 | **Journal** | ⬜ | daily entries + reflection (§5 Epic C) |
 | **Meeting** | ⬜ | with a Meeting Assistant agent (§5 Epic F) |
@@ -85,9 +85,11 @@ Finance Assistant ⬜ · Travel Planner ⬜.
 
 ## 3. Implementation status — where we actually are
 
-**Current app version: `0.17.0`** (SemVer in `app/package.json` / [CHANGELOG.md](CHANGELOG.md)). Ten
-pages, twenty-two API routes, Postgres-persisted, Next.js App Router + TypeScript + Vitest (plus a
-read-only **prod smoke suite**, run separately — see below). The newest surface is **Global Search**
+**Current app version: `0.18.0`** (SemVer in `app/package.json` / [CHANGELOG.md](CHANGELOG.md)). Twelve
+pages, twenty-seven API routes, Postgres-persisted, Next.js App Router + TypeScript + Vitest (plus a
+read-only **prod smoke suite**, run separately — see below). The newest surface is **Notes** (`/notes`,
+`0.18.0`, **B1**) — markdown notes with **file attachments on the platform blob store (C20)**, linkable to
+a Goal/Project and indexed into C19 search; before it, **Global Search**
 (`/search`, `0.17.0`, **B5**) — one box across Goals, Tasks, Projects, Areas & Habits, backed by the
 platform's **C19** owner-scoped full-text index: rows are indexed on mutation, a "reindex my data"
 action backfills pre-existing rows, and results are ranked, typed, and `<mark>`-highlighted. Before it,
@@ -108,8 +110,11 @@ generic **owner-scoped full-text search** (`POST /search` + `/index`·`/index/de
 are live server-side now** (reached via `FORGE_EVENTS_URL`). The first C19 consumer has now shipped: **B5 ·
 Global Search** (`0.17.0`) indexes every Goal/Task/Project/Area/Habit on mutation, backfills existing rows via a
 "reindex my data" action, and adds a `/search` UI (ranked, typed, `<mark>`-highlighted results that link back
-to each resource). The other consumer feature that builds on the platform — **Notes attachments** (Epic B, C20)
-— follows in a later pass. The `./forge`
+to each resource). The second platform-consumer feature has now shipped too: **B1 · Notes / Documents**
+(`0.18.0`) — markdown notes with **file attachments on the platform blob store (C20)** (app-proxied
+`POST /blobs` upload + an auth-checked owner-scoped serve proxy `GET /api/blobs/:id` + owner-scoped delete,
+15 MB / image+doc allowlist), linkable to Goals/Projects, and indexed into **C19** search so they appear in
+Global Search. **Both the search (C19) and blob-storage (C20) endpoints now have a live consumer.** The `./forge`
 wrapper dials the in-container API on the IPv4 literal `127.0.0.1` so it never misdials IPv6 `::1` (**P20**), and
 it now **always polls `/health` before exec'ing the CLI** so a cold-start container bind can't race the `make up`
 → `forge release` handoff (**P22**). The deploy control-plane moved off the `0.24.1` stopgap to `0.26.2`, which
@@ -188,6 +193,7 @@ flags to the CLI (the **P16** `make deploy` fix).
 | **v4+** | App footer | [specs/app-footer/](specs/app-footer/) | Site-wide footer (`0.11.0`): the live app version (`v<X.Y.Z>`, read dynamically from `package.json` — never hardcoded) + a static **"Powered by Mardash Forge"** attribution, isolated as link-ready markup (the platform lifts it later — tracked upstream as capability C17) |
 | **v5** | Projects (Epic A · A1) | §5 Epic A · A1 (this doc) | A **Project** groups related Goals (`/projects` + a project detail view, `0.14.0`): create with title + description, add/remove Goals (a Goal belongs to ≤1 Project), a read-time **task-weighted rollup** of progress/heat across members (reuses `lib/goals` progress + `lib/heat`), and **archive** (goals survive — the `project_id` FK is nulled, never cascade-deleted). Owner-scoped like every resource; emits `project.*` timeline events. Strengthens *Organize*; app-local (forced no new platform capability) |
 | **v6** | Areas (Epic A · A2) | §5 Epic A · A2 (this doc) | An **Area** is a user-defined life domain (`/areas`, `0.15.0`): create/rename/recolor/delete; tag a Goal, Habit, or Project to ≤1 Area, then **filter every list view** (Floor, Habits, Projects, Today) by `?area=<id>`. An `areas` table + a nullable `area_id` FK on goals/habits/projects (`ON DELETE SET NULL`, so deleting an Area keeps the resources — the tag is just nulled). Owner-scoped like every resource; emits `area.created` / `resource.tagged` timeline events. Strengthens *Organize*; app-local (Gate 0 ruled it pure domain reusing C10/C11/C3 — no new platform capability) |
+| **v7** | Notes / Documents (Epic B · B1) | §5 Epic B · B1 (this doc) | **Notes** are markdown documents with **file attachments** (`/notes` + a `/notes/[id]` editor with a live preview, `0.18.0`): create/list/edit/delete, link to a Goal/Project, attach images/docs, and find them in Global Search. Owner-scoped (cross-owner → 404). The **first consumer of the platform blob store (C20)** — app-proxied `POST /blobs` upload, an auth-checked owner-scoped serve proxy, owner-scoped delete, 15 MB / image+doc allowlist — and indexed into **C19** search (`type: note`). Emits a `document.created` timeline event. Introduces the **Document** resource; strengthens *Organize* |
 
 > **The only *product* surface added since v4 is app chrome (the footer above); no new domain feature
 > has shipped.** Everything in `0.1.1 → 0.5.0` was **platform
@@ -284,10 +290,10 @@ forces a specific Forge capability. Because Wave 1 (C1–C8) is built, the press
 **Wave 2** capabilities — the ones the domain model always implied but hasn't needed until now:
 
 > **Wave 2 capability frontier (what these features will force into Forge):** **Identity / auth ✅** ·
-> **Permissions / access control ✅** · **Search / indexing** · **File & blob storage** ·
+> **Permissions / access control ✅** · **Search / indexing ✅** · **File & blob storage ✅** ·
 > **Embeddings / vector search (RAG)** · **OAuth + external integrations / webhooks** · **Push /
 > email delivery channels** · **Sync / offline** · **richer multi-step agent orchestration +
-> web/tool access**. *(✅ Identity/auth shipped via **C10** — `0.6.0`; ✅ Permissions / per-user ownership shipped via **C11** — Epic M · M2, adopted `0.7.0`.)*
+> web/tool access**. *(✅ Identity/auth shipped via **C10** — `0.6.0`; ✅ Permissions / per-user ownership shipped via **C11** — Epic M · M2, adopted `0.7.0`; ✅ Search / indexing shipped via **C19** — B5 Global Search, `0.17.0`; ✅ File & blob storage shipped via **C20** — B1 Notes attachments, `0.18.0`.)*
 
 Per-feature format: **what** · *User can:* · *Introduces:* (resources/capabilities/agents) ·
 *Pressures Forge →* (the Wave-2 capability) · *Borrow from:* · *Spec seed:* (data + key acceptance
@@ -329,14 +335,21 @@ that starts to make **Search** necessary.
 The biggest single leap in usefulness *and* platform pressure. Makes forge-os a place you *think*,
 not just a place you track.
 
-- **B1 · Notes / Documents** — rich-text notes attached to a Goal/Project or standalone. · *User
-  can:* write a note, attach it to a Goal, browse `/notes`. · *Introduces:* **Document** resource;
-  *Write*/*Organize*. · *Pressures Forge →* **File & blob storage** (images/attachments) and rich
-  content persistence — a genuinely new Forge capability. · *Borrow from:* Notion, Capacities,
-  Reflect. · *Spec seed:* `documents(id, title, body_md, goal_id?, project_id?, created_at,
-  updated_at)`; markdown body; AC: CRUD, link to a Goal, render on the Goal detail page. Attachments
-  are the platform-pressure stretch (file storage). Non-goals: real-time collab editing. · *Size M ·
-  ●*
+- **B1 · Notes / Documents** — ✅ **shipped (`0.18.0`).** Markdown notes with file attachments,
+  linkable to a Goal/Project. · *User can:* write a markdown note (`/notes` + a `/notes/[id]` editor
+  with a live preview), attach images/docs, link it to a Goal or Project, find it in Global Search. ·
+  *Introduced:* the **Document** resource; strengthens *Organize*. · *Pressured Forge →* **File & blob
+  storage** — shipped as **C20** and consumed here (the first consumer): app-proxied multipart
+  `POST /blobs` upload, an auth-checked owner-scoped serve proxy (`GET /api/blobs/:id` → data-plane
+  `GET /blobs/:id?owner=`, cross-owner → 404), owner-scoped delete, a 15 MB cap + image/doc allowlist
+  (platform sniffs magic bytes). · *Borrow from:* Notion, Capacities, Reflect. · *Shipped as:*
+  `documents(id, owner_id, title, body_md, goal_id?, project_id?, created_at, updated_at)` (both links
+  `ON DELETE SET NULL`) + `document_attachments(id, document_id → ON DELETE CASCADE, owner_id, blob_id,
+  filename, content_type, size, created_at)`; owner-scoped CRUD (cross-owner → 404); notes indexed into
+  **C19** (`type: note`) on mutation + the reindex backfill; a `lib/forge-blobs.ts` client mirroring the
+  C3/C4/C19 clients; a dependency-free XSS-safe markdown renderer (`lib/markdown.ts`, renders to React
+  nodes, href scheme allowlist). Non-goals held: real-time collab editing, rich-text (WYSIWYG). ·
+  *Size M · ●*
 - **B2 · Quick Capture / Inbox** — one fast box (⌘K or a nav "+"): type or speak, it lands in an
   **Inbox** you later triage into a Task / Note / Idea / Goal. · *User can:* capture in one keystroke
   from anywhere; triage later. · *Introduces:* an **Inbox** flow; *Organize*. · *Borrow from:*
@@ -581,9 +594,10 @@ isolated (verified live with two users). Together they were a high-value wind-tu
 (Sharing/collaboration — **M3** — stays deferred until multi-user collaboration is genuinely needed.)
 
 **▶ Recommended next feature set — "Knowledge & Search" (Epics A + B).** Ship **A1 Projects ✅ (`0.14.0`) →
-A2 Areas ✅ (`0.15.0`) → B5 Global Search ✅ (`0.17.0`) → B1 Notes → B2 Quick Capture.** (A1 + A2 shipped
-app-local — Gate 0 ruled each pure domain, no new platform capability. B5 shipped as the first **C19** consumer —
-search is now a platform primitive, not app-local SQL; **B1 Notes is next**, and pulls in **C20** blob storage.)
+A2 Areas ✅ (`0.15.0`) → B5 Global Search ✅ (`0.17.0`) → B1 Notes ✅ (`0.18.0`) → B2 Quick Capture.** (A1 + A2
+shipped app-local — Gate 0 ruled each pure domain, no new platform capability. B5 shipped as the first **C19**
+consumer — search is now a platform primitive, not app-local SQL. B1 Notes shipped as the first **C20** (blob
+storage) consumer — file attachments are a platform primitive too; **B2 Quick Capture is next**.)
 Why this set:
 - *Genuinely useful:* turns forge-os from a goal tracker into a real life OS / second brain — the
   category every competitor occupies and the one the domain model most obviously implies.

@@ -22,7 +22,7 @@
 const TIMEOUT_MS = 2_000;
 
 /** The domain kinds we index. `type` is app-defined; the platform treats it opaquely. */
-export type SearchType = 'goal' | 'task' | 'project' | 'area' | 'habit';
+export type SearchType = 'goal' | 'task' | 'project' | 'area' | 'habit' | 'note';
 
 /** A document to upsert into the index. Idempotent by `(owner, type, id)`. */
 export interface IndexDoc {
@@ -194,6 +194,8 @@ export function typeLabel(type: SearchType): string {
       return 'Area';
     case 'habit':
       return 'Habit';
+    case 'note':
+      return 'Note';
   }
 }
 
@@ -214,6 +216,8 @@ export function hitHref(hit: Pick<SearchHit, 'type' | 'id' | 'attrs'>): string {
       return '/areas';
     case 'habit':
       return '/habits';
+    case 'note':
+      return `/notes/${hit.id}`;
   }
 }
 

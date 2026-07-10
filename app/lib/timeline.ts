@@ -17,7 +17,10 @@ export type EventType =
   // A2 · Areas. `subject` is the areaId (see eventHref); the area name (and, for a
   // tag, the tagged resource's kind + title) ride in `data` so the feed stands alone.
   | 'area.created'
-  | 'resource.tagged';
+  | 'resource.tagged'
+  // B1 · Notes / Documents. `subject` is the documentId (see eventHref → /notes/<id>); the
+  // note title rides in `data` so the feed renders standalone.
+  | 'document.created';
 
 /** Denormalized snapshot stored with each event so the feed renders standalone.
  *  Under the C3 app event log, everything but the subject (=goalId, or projectId for
@@ -34,6 +37,8 @@ export interface EventData {
   areaName?: string;
   resourceKind?: 'goal' | 'habit' | 'project';
   resourceTitle?: string;
+  // B1 · Notes. The note title, so a `document.created` entry renders standalone.
+  documentTitle?: string;
 }
 
 export interface TimelineEvent {
@@ -55,6 +60,7 @@ export function sparkKind(event: Pick<TimelineEvent, 'type' | 'data'>): SparkKin
     case 'goal.created':
     case 'project.created':
     case 'area.created':
+    case 'document.created':
       return 'created';
     case 'task.added':
     case 'goal.added_to_project':
@@ -83,6 +89,7 @@ export function describeEvent(event: Pick<TimelineEvent, 'type' | 'data'>): stri
   const project = event.data.projectTitle ?? 'a project';
   const area = event.data.areaName ?? 'an area';
   const resource = event.data.resourceTitle ?? 'a resource';
+  const docTitle = event.data.documentTitle ?? 'a note';
   switch (event.type) {
     case 'goal.created':
       return `Created “${goal}”`;
@@ -100,6 +107,8 @@ export function describeEvent(event: Pick<TimelineEvent, 'type' | 'data'>): stri
       return `Marked out the “${area}” area`;
     case 'resource.tagged':
       return `Filed “${resource}” under “${area}”`;
+    case 'document.created':
+      return `Wrote “${docTitle}”`;
     case 'goal.status_changed':
       if (event.data.to === 'achieved') return `Forged “${goal}”`;
       if (event.data.to === 'archived') return `Archived “${goal}”`;
@@ -121,6 +130,8 @@ export function eventHref(event: Pick<TimelineEvent, 'type' | 'goalId'>): string
     case 'area.created':
     case 'resource.tagged':
       return '/areas';
+    case 'document.created':
+      return `/notes/${event.goalId}`;
     default:
       return `/goals/${event.goalId}`;
   }
